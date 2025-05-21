@@ -1,8 +1,12 @@
 <script lang="ts">
   import type { UnitOfMeasureDbo } from "$lib/services/dbService"; // Updated import
   import { createEventDispatcher } from "svelte";
-
+  import UnitForm from "./UnitForm.svelte";
+  import { unitOfMeasureStore } from "$lib/stores/unitOfMeasureStore";
   export let unit: UnitOfMeasureDbo; // Type updated to UnitOfMeasureDbo
+
+  const { selectedUnitToEdit, clearSelectedUnitToEdit } = unitOfMeasureStore;
+
   const dispatch = createEventDispatcher();
 
   // localId is now Dexie's primary key, which should always exist for items from the store.
@@ -19,7 +23,10 @@
       // Optionally show a toast message to the user
     }
   };
-
+  const handleClearEdit = () => {
+    console.log("Cancel or submit -> clearing selected unit");
+    clearSelectedUnitToEdit();
+  };
   // Use unit.sincronizado to determine sync status
   // Server ID might be null if created offline and never synced
 </script>
@@ -82,3 +89,13 @@
     >
   </div>
 </li>
+
+{#if $selectedUnitToEdit?.localId === unit.localId}
+  {#key $selectedUnitToEdit?.localId}
+    <UnitForm
+      unitToEdit={$selectedUnitToEdit}
+      on:submitted={() => dispatch("edit", null)}
+      on:formCleared={() => dispatch("cancel", null)}
+    />
+  {/key}
+{/if}

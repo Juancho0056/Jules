@@ -56,7 +56,15 @@
   <ul class="list-none p-0 m-0 bg-white shadow-md rounded-lg">
     {#each $unitOfMeasureStore.units as unit (unit.localId)}
       <!-- Key by localId, which is Dexie's PK -->
-      <UnitListItem {unit} on:edit={handleEdit} on:delete={handleDelete} />
+      <UnitListItem
+        {unit}
+        on:edit={handleEdit}
+        on:delete={handleDelete}
+        on:cancel={() => {
+          unitOfMeasureStore.clearSelectedUnitToEdit();
+          console.log("Cancel edit action");
+        }}
+      />
     {/each}
   </ul>
 {/if}

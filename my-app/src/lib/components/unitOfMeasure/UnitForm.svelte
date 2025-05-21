@@ -6,6 +6,7 @@
   export let unitToEdit: UnitOfMeasureDbo | null = null;
 
   // Form fields based on UnitOfMeasureDbo
+  let formRef: HTMLFormElement | null = null;
   let localId: number | null | undefined = undefined; // Dexie's auto-incremented ID
   let id: string | null | undefined = undefined; // Server's ID (string or null if not synced)
   let codigo: string = ""; // Business key
@@ -43,7 +44,12 @@
   onMount(() => {
     initializeForm(unitToEdit);
   });
-
+  onMount(() => {
+    // Solo hacer scroll si el form está en pantalla
+    setTimeout(() => {
+      formRef?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50); // pequeño delay para asegurar montaje y layout
+  });
   // Watch for changes in unitToEdit prop
   $: initializeForm(unitToEdit);
 
@@ -103,6 +109,7 @@
 </script>
 
 <form
+  bind:this={formRef}
   on:submit|preventDefault={handleSubmit}
   class="p-4 border rounded shadow-md mb-4 bg-white"
 >

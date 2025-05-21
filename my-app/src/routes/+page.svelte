@@ -13,9 +13,12 @@
   const { selectedUnitToEdit } = unitOfMeasureStore;
 
   const handleEditUnit = (event: CustomEvent<UnitOfMeasureDbo>) => {
+    // Si ya estás editando la misma unidad, no hagas nada
+    if ($selectedUnitToEdit?.localId === event.detail.localId) return;
+
+    // Cerrar cualquier formulario de nuevo
+    showFormForNew = false;
     unitOfMeasureStore.selectUnitToEdit(event.detail);
-    console.log("Selected unit to edit:", event.detail);
-    showFormForNew = false; // Hide new unit form if editing existing
   };
 
   const handleFormSubmitted = () => {
@@ -32,12 +35,17 @@
   };
 
   const toggleAddNewForm = () => {
-    if ($selectedUnitToEdit) {
-      unitOfMeasureStore.clearSelectedUnitToEdit(); // Clear any existing edit selection
+    if (showFormForNew) {
+      // Ya está abierto el de nuevo → cerrar
+      showFormForNew = false;
+    } else {
+      // Estás abriendo el de nuevo → asegúrate de cerrar edición
+      if ($selectedUnitToEdit) {
+        unitOfMeasureStore.clearSelectedUnitToEdit();
+      }
+      showFormForNew = true;
     }
-    showFormForNew = !showFormForNew; // Toggle new unit form
   };
-
   onMount(async () => {
     // unitOfMeasureStore.setLoading(true); // Optional: if store manages global loading state
     try {
@@ -49,11 +57,6 @@
       // unitOfMeasureStore.setLoading(false); // Optional
     }
   });
-
-  // Reactive variable to determine if any form should be shown (either new or edit)
-  $: showAnyForm = showFormForNew || !!$selectedUnitToEdit;
-  // Determine which unit to pass to the form: null for new, or the selected one for editing.
-  $: currentUnitForForm = showFormForNew ? null : $selectedUnitToEdit;
 </script>
 
 <div class="container mx-auto p-6 bg-gray-50 min-h-screen">
@@ -93,10 +96,9 @@
     </p>
   {/if}
 
-  {#if showAnyForm}
+  {#if showFormForNew}
     <div class="mb-8 p-6 bg-white rounded-lg shadow-xl">
       <UnitForm
-        unitToEdit={currentUnitForForm}
         on:formSubmitted={handleFormSubmitted}
         on:formCleared={handleFormCleared}
       />
