@@ -1,31 +1,39 @@
 <script lang="ts">
   import "../app.css"; // Existing import for Tailwind
   import ToastNotifications from '$lib/components/common/ToastNotifications.svelte';
-  import { offlineStore } from '$lib/stores/offlineStore'; // For optional display in layout
+  import SyncIndicator from '$lib/components/common/SyncIndicator.svelte'; // Import SyncIndicator
+  import { offlineStore } from '$lib/stores/offlineStore'; // For optional direct display
+  import { sessionStore } from '$lib/stores/sessionStore'; // For conditional logic if needed here
+  import { authService } from '$lib/services/authService'; // For initializeSession
   import { onMount } from "svelte";
 
-  // Optional: You can also show a persistent status in the layout itself
-  // let onlineStatusMessage = '';
-  // offlineStore.subscribe(state => {
-  //   onlineStatusMessage = state.isOffline ? 'Status: Offline' : 'Status: Online';
-  // });
+  // Initialize session on application load
+  onMount(async () => {
+    // Make sure this is only called once, typically in the root layout.
+    if (typeof window !== 'undefined') { // Ensure it runs only on client
+        await authService.initializeSession();
+    }
+  });
 
-  // This is just to ensure Tailwind utility classes are available if this is the root layout
-  // and to provide a basic structure.
 </script>
 
 <div class="min-h-screen bg-gray-100 text-gray-800">
-  <!-- Optional: Display persistent status directly in layout -->
+  <!-- Example: Optional persistent status directly in layout -->
   <!-- 
-  <div class="p-2 text-center text-sm { $offlineStore.isOffline ? 'bg-yellow-300 text-yellow-800' : 'bg-green-200 text-green-800'}">
-    { $offlineStore.isOffline ? 'You are currently offline.' : 'You are online.' }
+  <div class="p-2 text-center text-sm { $offlineStore.isOffline ? 'bg-yellow-300 text-yellow-800' : ($sessionStore.isAuthenticated ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800')}">
+    {#if $sessionStore.isAuthenticated}
+      { $offlineStore.isOffline ? 'You are currently offline.' : 'You are online.' }
+    {:else}
+      Not authenticated.
+    {/if}
   </div>
   -->
   
   <slot /> <!-- Main content of each page -->
 </div>
 
-<ToastNotifications /> <!-- Add the ToastNotifications component here -->
+<ToastNotifications />
+<SyncIndicator /> <!-- Add the SyncIndicator component here -->
 
 <style>
   /* Minimal global styles if necessary */
