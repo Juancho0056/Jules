@@ -1,8 +1,9 @@
 import { offlineStore } from '../stores/offlineStore';
-import { apiService, ApiError } from './apiService';
-import { db, type PendingOperationDbo, type UnitOfMeasureDbo } from './dbService'; // Import Dexie db instance and DBO types
+import { apiService, ApiError } from './apiService'; // ApiError might still be used for status code checks
+import { db, type PendingOperationDbo, type UnitOfMeasureDbo } from './dbService';
 import { get } from 'svelte/store';
-import { toastStore } from '../stores/toastStore'; // For notifications
+import { toastStore } from '../stores/toastStore';
+import type { CreateUnidadMedidaCommand, UpdateUnidadMedidaCommand, UnidadMedida } from '$lib/types/unidadMedida';
 
 // addToQueue now more generic for different entities and operations
 const addToQueue = async (
@@ -73,64 +74,84 @@ const processQueue = async (): Promise<void> => {
       let result;
       let success = false;
 
+      // Standard API path prefix
+      const apiPathPrefix = '/api';
+
       switch (op.operationType) {
         case 'create':
-          result = await apiService.post<any>(`/${op.entityName}`, op.payload); // Assuming entityName matches API endpoint path
-          if (result.ok && result.value) {
-            // Update local Dexie store with server response (especially server-assigned ID)
-            if (op.entityName === 'unitsOfMeasure') { // Handle specific entities
-              const serverUnit = result.value as UnitOfMeasureDbo; // This assumes result.value *is* UnitOfMeasureDbo
-                                                                    // If it's just { id: string }, adjust accordingly.
-              // op.entityKey should be the 'codigo' used to find the local record
-              // or op.payload.offlineId if that was used as a temporary key
-              // Ensure op.payload has 'codigo' if op.entityKey is not reliably set for creates.
-              const keyToSearch = op.entityKey || op.payload.codigo;
-              if (!keyToSearch) {
-                  console.error(`SyncService: 'codigo' or 'entityKey' missing for create operation opId: ${op.opId} for entity ${op.entityName}`);
-                  await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
-                  continue;
-              }
-              const localUnit = await db.unitsOfMeasure.where('codigo').equals(keyToSearch).first();
+          if (op.entityName === 'UnidadMedidas') {
+            const dbo = op.payload as UnitOfMeasureDbo;
+            const createCommand: CreateUnidadMedidaCommand = {
+              codigo: dbo.codigo,
+              nombre: dbo.Nombre,
+              abreviatura: dbo.Abreviatura,
+              orden: dbo.Orden,
+              estado: dbo.Estado,
+            };
+            result = await apiService.post<UnidadMedida>(`${apiPathPrefix}/${op.entityName}`, createCommand);
+            if (result.IsSuccess && result.Value) {
+              const serverUnit = result.Value;
+              const localUnit = await db.unitsOfMeasure.where('codigo').equals(dbo.codigo).first();
               if (localUnit && localUnit.localId) {
                 await db.unitsOfMeasure.update(localUnit.localId, {
-                  id: serverUnit.id, // Server ID
+                  id: serverUnit.Id,
+                  Nombre: serverUnit.Nombre,
+                  Abreviatura: serverUnit.Abreviatura,
+                  Orden: serverUnit.Orden,
+                  Estado: serverUnit.Estado,
                   sincronizado: true,
-                  fechaModificacion: new Date(), // Or use server's date
-                  // other fields from serverUnit if applicable
+                  fechaModificacion: new Date(serverUnit.FechaHoraModificacion || Date.now()),
                 });
-                 console.log(`Synced create for unitsOfMeasure ${keyToSearch}, server ID: ${serverUnit.id}`);
+                console.log(`Synced create for UnidadMedidas ${dbo.codigo}, server ID: ${serverUnit.Id}`);
               } else {
-                 // If not found by codigo, maybe it was deleted locally before sync? Or error in key.
-                 console.warn(`Local unit with codigo ${keyToSearch} not found for sync update after create.`);
+                console.warn(`Local unit with codigo ${dbo.codigo} not found for sync update after create.`);
               }
+              success = true;
             }
-            // Add more entity-specific handlers here
-            success = true;
+          } else {
+            // Fallback or handler for other entities
+            console.warn(`SyncService: Create for unhandled entity ${op.entityName}`);
+            // Example: result = await apiService.post<any>(`${apiPathPrefix}/${op.entityName}`, op.payload);
+            // if (result.IsSuccess) success = true;
           }
           break;
         case 'update':
-          // entityKey must exist for an update
           if (!op.entityKey) {
             console.error(`SyncService: entityKey missing for update operation opId: ${op.opId}`);
-            await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() }); // Mark as failed
-            continue; // next operation
+            await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
+            continue;
           }
-          result = await apiService.put<any>(`/${op.entityName}/${op.entityKey}`, op.payload); // e.g. /unitsOfMeasure/KG
-          if (result.ok) {
-            if (op.entityName === 'unitsOfMeasure') {
-              const localUnit = await db.unitsOfMeasure.where('codigo').equals(op.entityKey).first();
+          if (op.entityName === 'UnidadMedidas') {
+            const payloadToUpdate = op.payload as Partial<UnitOfMeasureDbo>;
+            const updateCommand: UpdateUnidadMedidaCommand = {
+              id: op.entityKey!, // entityKey is 'codigo', server maps to 'Id'
+              nombre: payloadToUpdate.Nombre!,
+              abreviatura: payloadToUpdate.Abreviatura,
+              orden: payloadToUpdate.Orden!,
+              estado: payloadToUpdate.Estado!,
+            };
+            result = await apiService.put<UnidadMedida>(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`, updateCommand);
+            if (result.IsSuccess && result.Value) {
+              const serverUnit = result.Value;
+              const localUnit = await db.unitsOfMeasure.where('codigo').equals(op.entityKey!).first();
               if (localUnit && localUnit.localId) {
                 await db.unitsOfMeasure.update(localUnit.localId, {
+                  Nombre: serverUnit.Nombre,
+                  Abreviatura: serverUnit.Abreviatura,
+                  Orden: serverUnit.Orden,
+                  Estado: serverUnit.Estado,
                   sincronizado: true,
-                  fechaModificacion: new Date(), // Or use server's date
-                  // Potentially update other fields from result.value if response contains the full entity
-                  ...(result.value || {}) 
+                  fechaModificacion: new Date(serverUnit.FechaHoraModificacion || Date.now()),
                 });
-                console.log(`Synced update for unitsOfMeasure ${op.entityKey}`);
+                console.log(`Synced update for UnidadMedidas ${op.entityKey}`);
               }
+              success = true;
             }
-            // Add more entity-specific handlers here
-            success = true;
+          } else {
+            // Fallback or handler for other entities
+            console.warn(`SyncService: Update for unhandled entity ${op.entityName}`);
+            // Example: result = await apiService.put<any>(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`, op.payload);
+            // if (result.IsSuccess) success = true;
           }
           break;
         case 'delete':
@@ -139,18 +160,16 @@ const processQueue = async (): Promise<void> => {
             await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
             continue;
           }
-          result = await apiService.delete<void>(`/${op.entityName}/${op.entityKey}`);
-          if (result.ok) {
-            // If successful, the item should have already been removed from local Dexie table by the store action.
-            // Or, remove it here if store logic keeps it until sync confirmation.
-            // For unitsOfMeasure, if it was optimistically removed from UI store, also remove from Dexie here.
-             if (op.entityName === 'unitsOfMeasure') {
-                const localUnit = await db.unitsOfMeasure.where('codigo').equals(op.entityKey).first();
-                if (localUnit && localUnit.localId) {
-                    await db.unitsOfMeasure.delete(localUnit.localId);
-                    console.log(`Hard deleted unitsOfMeasure ${op.entityKey} from local Dexie after sync.`);
-                }
-             }
+          result = await apiService.delete<void>(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`);
+          if (result.IsSuccess) { // Check IsSuccess
+            if (op.entityName === 'UnidadMedidas') {
+              const localUnit = await db.unitsOfMeasure.where('codigo').equals(op.entityKey).first();
+              if (localUnit && localUnit.localId) {
+                await db.unitsOfMeasure.delete(localUnit.localId);
+                console.log(`Hard deleted UnidadMedidas ${op.entityKey} from local Dexie after sync.`);
+              }
+            }
+            // Add more entity-specific handlers here for delete if needed
             console.log(`Synced delete for ${op.entityName} ${op.entityKey}`);
             success = true;
           }
@@ -158,32 +177,32 @@ const processQueue = async (): Promise<void> => {
         default:
           console.warn(`SyncService: Unsupported operationType ${op.operationType} in queue for opId: ${op.opId}`);
           await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
-          continue; 
+          continue;
       }
 
       if (success) {
         await db.pendingOperations.delete(op.opId);
-        toastStore.addToast(`${op.entityName} (key: ${op.entityKey}) synced successfully.`, 'success', 2000);
+        toastStore.addToast(`${op.entityName} (key: ${op.entityKey || op.payload?.codigo}) synced successfully.`, 'success', 2000);
       } else {
-        const errorMsg = result?.error?.message || 'Unknown error during sync.';
-        console.error(`SyncService: Failed to process opId ${op.opId} (${op.operationType} ${op.entityName} ${op.entityKey}): ${errorMsg}`);
-        toastStore.addToast(`Failed to sync ${op.entityName} (key: ${op.entityKey}). Will retry.`, 'warning', 3000);
-        // Update status based on error type or retry attempts
-        const currentAttempts = (op.attempts || 0); // attempts already incremented for this run
-        if (result?.error instanceof ApiError && (result.error.status >= 400 && result.error.status < 500 && result.error.status !== 401 && result.error.status !== 403)) {
-            // Non-transient client error, don't retry indefinitely
+        // Use Errors array from Result object
+        const errorMsg = result?.Errors?.join(', ') || 'Unknown error during sync.';
+        console.error(`SyncService: Failed to process opId ${op.opId} (${op.operationType} ${op.entityName} ${op.entityKey || op.payload?.codigo}): ${errorMsg}`);
+        toastStore.addToast(`Failed to sync ${op.entityName} (key: ${op.entityKey || op.payload?.codigo}). Will retry.`, 'warning', 3000);
+        
+        const currentAttempts = (op.attempts || 0); // attempts already incremented
+        // Check if result.error exists and has a status property
+        // This part needs careful handling since result.error is not directly available from Result<T>
+        // We'd need to inspect result.Errors or have a way to get status code from apiService if needed for specific logic
+        // For now, general retry logic based on attempts:
+        if (currentAttempts >= MAX_RETRY_ATTEMPTS) {
             await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
-             toastStore.addToast(`Sync for ${op.entityName} ${op.entityKey} failed (client error). Check data.`, 'error', 5000);
-        } else if (currentAttempts >= MAX_RETRY_ATTEMPTS) {
-            await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
-            toastStore.addToast(`Sync for ${op.entityName} ${op.entityKey} failed after ${MAX_RETRY_ATTEMPTS} attempts.`, 'error', 5000);
+            toastStore.addToast(`Sync for ${op.entityName} ${op.entityKey || op.payload?.codigo} failed after ${MAX_RETRY_ATTEMPTS} attempts.`, 'error', 5000);
         } else {
-            // Transient error or server error, keep as 'pending' for next retry cycle
-             await db.pendingOperations.update(op.opId, { status: 'pending', lastAttempt: new Date() }); // Keep attempts count
+             await db.pendingOperations.update(op.opId, { status: 'pending', lastAttempt: new Date() });
         }
       }
-    } catch (error) {
-      console.error(`SyncService: General error processing opId ${op.opId}:`, error);
+    } catch (error: any) { // Catch any other error
+      console.error(`SyncService: General error processing opId ${op.opId}:`, error.message || error);
       if (op.opId) { // Ensure opId is defined
         await db.pendingOperations.update(op.opId, { status: 'failed', lastAttempt: new Date() });
       }
@@ -229,6 +248,49 @@ const getQueueStatus = async () => {
 // Auto trigger queue processing when app comes online
 // This listener is crucial.
 let firstRun = true;
+
+const fetchAllUnidadesMedida = async (): Promise<boolean> => {
+  console.log('SyncService: Fetching all Unidades de Medida from server...');
+  const result = await apiService.get<UnidadMedida[]>('/api/UnidadMedidas/all'); // Or /api/UnidadMedidas/activas
+
+  if (result.IsSuccess && result.Value) {
+    const serverUnits = result.Value;
+    toastStore.addToast(`Fetched ${serverUnits.length} units from server. Updating local store...`, 'info', 3000);
+    try {
+      for (const serverUnit of serverUnits) {
+        const existingLocalUnit = await db.unitsOfMeasure.where('codigo').equals(serverUnit.Id).first();
+
+        const unitDbo: UnitOfMeasureDbo = {
+          localId: existingLocalUnit?.localId, // Preserve localId if exists for update
+          codigo: serverUnit.Id,               // Server's 'Id' is our 'codigo' (business key)
+          id: serverUnit.Id,                 // Store server's 'Id' also in 'Id' field. Corrected from 'Id' to 'id'
+          Nombre: serverUnit.Nombre,
+          Abreviatura: serverUnit.Abreviatura,
+          Orden: serverUnit.Orden,
+          Estado: serverUnit.Estado,
+          sincronizado: true,
+          fechaModificacion: new Date(serverUnit.FechaHoraModificacion || Date.now()),
+          // Preserve offlineId if it exists and you have specific logic for it, otherwise null
+          offlineId: existingLocalUnit?.offlineId || null 
+        };
+        await db.unitsOfMeasure.put(unitDbo);
+      }
+      toastStore.addToast('Local units updated successfully.', 'success');
+      console.log('SyncService: Successfully fetched and updated local Unidades de Medida.');
+      return true;
+    } catch (dbError) {
+      console.error('SyncService: Error updating local Dexie database:', dbError);
+      toastStore.addToast('Failed to update local unit store.', 'error');
+      return false;
+    }
+  } else {
+    const errorMsg = result.Errors?.join(', ') || 'Failed to fetch units from server.';
+    console.error('SyncService: Failed to fetch Unidades de Medida:', errorMsg);
+    toastStore.addToast(errorMsg, 'error');
+    return false;
+  }
+};
+
 offlineStore.subscribe(state => {
   if (firstRun) {
       firstRun = false;
@@ -252,4 +314,5 @@ export const syncService = {
   addToQueue,
   processQueue, // Expose for manual trigger if needed
   getQueueStatus, // Expose for UI display or debugging
+  fetchAllUnidadesMedida,
 };

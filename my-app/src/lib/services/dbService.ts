@@ -4,9 +4,11 @@ import Dexie, { type Table } from 'dexie';
 export interface UnitOfMeasureDbo { // Dbo for Database Object
   localId?: number; // Auto-incremented primary key by Dexie
   id?: string | null; // Server-assigned ID, null if created offline and not synced
-  codigo: string;    // Business key, should be unique
-  name: string;
-  symbol: string;
+  codigo: string;    // Business key, maps to UnidadMedida.Id from server, should be unique
+  Nombre: string;           // Renamed from 'name'
+  Abreviatura?: string | null; // Renamed from 'symbol', optional
+  Orden: number;            // New field
+  Estado: boolean;          // New field
   sincronizado: boolean;
   fechaModificacion: Date;
   offlineId?: string | null; // Optional: for client-side temporary ID if needed for UI logic before 'codigo' is set
@@ -37,10 +39,12 @@ export class MyDexieDatabase extends Dexie {
   constructor() {
     super('posOfflineFirstDb'); // Database name
     this.version(1).stores({
-      unitsOfMeasure: '++localId, &codigo, id, name, symbol, sincronizado, fechaModificacion, offlineId',
+      unitsOfMeasure: '++localId, &codigo, id, Nombre, Abreviatura, Orden, Estado, sincronizado, fechaModificacion, offlineId',
       // 'id' is server ID, 'codigo' is business key. 'localId' is Dexie's auto PK.
       // Index 'id' for quick lookups once server ID is known.
-      // Index 'sincronizado' for finding unsynced items can be added if needed: '++localId, &codigo, id, sincronizado, ...'
+      // Index 'Nombre' for searching/sorting.
+      // Index 'Estado' for filtering.
+      // Index 'sincronizado' for finding unsynced items.
       // 'offlineId' might be useful if 'codigo' isn't available immediately upon creation.
       
       pendingOperations: '++opId, entityName, operationType, timestamp, entityKey, status',
