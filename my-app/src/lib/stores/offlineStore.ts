@@ -1,7 +1,8 @@
 import { writable, get } from 'svelte/store';
 import { toastStore } from './toastStore';
 import { apiService } from '../services/apiService'; // For health check
-
+import type { Result } from '$lib/types/result'; // For Result type
+import type { HealthModel } from '$lib/types/health'; // For health check response type
 export interface OfflineState {
   isOffline: boolean;
   isHealthChecking: boolean; // To know if a health check is in progress
@@ -57,9 +58,9 @@ const createOfflineStore = () => {
       // Note: /api/health needs to be a public path in apiService.ts
       // and apiService.get for this path should ideally not trigger global 500-error-go-offline logic.
       // This is a known caveat with the current apiService structure.
-      const result = await apiService.get<any>('/api/health'); 
+      const result = await apiService.get<HealthModel>('/health'); 
       
-      if (result.ok) {
+      if (result.isSuccess) {
         consecutiveHealthCheckFailures = 0;
         // If we were marked offline (e.g., due to previous failed health checks), but now it's fine
         if (get(store).isOffline) { 
@@ -67,7 +68,7 @@ const createOfflineStore = () => {
         }
       } else {
         consecutiveHealthCheckFailures++;
-        console.warn(`Health check attempt ${consecutiveHealthCheckFailures} failed: ${result.error?.message || 'Unknown API error'}`);
+        console.warn(`Health check attempt ${consecutiveHealthCheckFailures} failed: ${result.errors?.[0] || 'Unknown API error'}`);
       }
     } catch (error) { // Catch network errors from fetchApi itself (e.g., if apiService.get throws)
       consecutiveHealthCheckFailures++;

@@ -4,13 +4,13 @@ import { get } from 'svelte/store';
 import { sessionStore } from '../stores/sessionStore'; // Import sessionStore
 import { authService } from './authService';     // Import authService
 
-const API_BASE_URL = 'https://your-actual-api-domain.com'; // Updated API_BASE_URL
+const API_BASE_URL = 'https://nrwv6zf9-9080.use.devtunnels.ms/api'; // Updated API_BASE_URL
 
 // Define public paths that do not require authentication or token refresh logic
 const PUBLIC_PATHS = [
     '/Auth/login',
     '/Auth/refresh-token',
-    '/api/health', // Ensure /api/health is present
+    '/health', // Ensure /api/health is present
     // Add other public paths if needed
 ];
 
@@ -147,9 +147,14 @@ async function fetchApi<T>(
       return Result.Success<T>(null as T); // Use null as T for 204 No Content
     }
 
-    const data: T = await response.json();
-    return Result.Success<T>(data);
+    //const data: T = await response.json();
+    //return Result.Success<T>(data);
+    console.log(`API response from ${endpoint}:`, response);
+    //const data = await response.json(); // data is already Result<T>
+    //return data;
+    return await response.json() as Result<T>;
   } catch (error) {
+    console.error(`Error during API request to ${endpoint}:`, error);
     const errorMessages: string[] = [];
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
       // If browser thinks it's online but fetch fails, suspect underlying connectivity issues.
@@ -171,7 +176,7 @@ async function checkHealth(): Promise<Result<any>> {
   // Endpoint is '/api/health'. It's public.
   // Assuming a 200 OK with any content means healthy.
   // If the health endpoint returns specific JSON, T could be that type. For now, 'any' is fine.
-  return fetchApi<any>('/api/health', { method: 'GET' });
+  return fetchApi<any>('/health', { method: 'GET' });
 }
 
 export const apiService = {

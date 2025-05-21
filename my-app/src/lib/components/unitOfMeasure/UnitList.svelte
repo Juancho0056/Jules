@@ -12,6 +12,8 @@
 
   // Type for the edit event detail
   const handleEdit = (event: CustomEvent<UnitOfMeasureDbo>) => {
+    console.log("Editing unit:", event.detail);
+    console.log("Dispatching edit event with detail unitlist");
     dispatch("editUnit", event.detail); // Forward the Dbo object
   };
 

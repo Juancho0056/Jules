@@ -64,6 +64,12 @@ const createSessionStore = () => {
         // refreshTokenPresent might remain true if it's still in Dexie but token failed
       }));
     },
+    clearError: () => {
+      update(state => ({
+        ...state,
+        error: null
+      }));
+    },
     setLoading: (loading: boolean = true) => {
       update(state => ({ ...state, isLoading: loading, error: null /* Clear error on new loading */ }));
     },

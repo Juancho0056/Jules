@@ -4,6 +4,7 @@ import { sessionStore, type UserProfile } from '../stores/sessionStore';
 import { toastStore } from '../stores/toastStore';
 // import { goto } from '$app/navigation'; // Example for SvelteKit navigation
 
+const TOKEN_KEY = 'app_Token';
 const REFRESH_TOKEN_KEY = 'app_refreshToken';
 const TOKEN_EXPIRATION_KEY = 'app_tokenExpiration';
 
@@ -28,14 +29,16 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
         '/Auth/login', // Actual API endpoint
         { email, password, captchaToken }
     );
-
-    if (response.IsSuccess && response.Value) {
-      const { token, refreshToken, expiration, user } = response.Value;
+    console.log("Login response:", response);
+    if (response.isSuccess && response.value) {
+      console.log("Login response:", response);
+      const { token, refreshToken, expiration, user } = response.value;
       const expirationDate = new Date(expiration);
 
       await db.appConfig.bulkPut([
         { key: REFRESH_TOKEN_KEY, value: refreshToken },
-        { key: TOKEN_EXPIRATION_KEY, value: expirationDate.toISOString() } // Store as ISO string or Date object
+        { key: TOKEN_EXPIRATION_KEY, value: expirationDate.toISOString() },
+        { key: TOKEN_KEY, value: token }, // Store as ISO string or Date object
       ]);
       
       sessionStore.setSession(token, true, expirationDate, user);
@@ -44,7 +47,7 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
       return true;
     } else {
       // Use Errors array from Result object
-      const errorMsg = response.Errors?.join(', ') || 'Login failed due to unknown server error.';
+      const errorMsg = response.errors?.join(', ') || 'Login failed due to unknown server error.';
       sessionStore.setError(errorMsg);
       toastStore.addToast(`Login failed: ${errorMsg}`, 'error');
       return false;
@@ -66,7 +69,7 @@ const refreshToken = async (): Promise<boolean> => {
     const storedRefreshTokenItem = await db.appConfig.get(REFRESH_TOKEN_KEY);
     const storedRefreshToken = storedRefreshTokenItem?.value as string | undefined;
 
-
+    console.log("Stored refresh token:", storedRefreshToken);
     if (!storedRefreshToken) {
       sessionStore.setError('No refresh token available.');
       // No toast here, as this might be part of a background check. Logout will show toast.
@@ -78,14 +81,16 @@ const refreshToken = async (): Promise<boolean> => {
         '/Auth/refresh-token', // Actual API endpoint
         { refreshToken: storedRefreshToken }
     );
-
-    if (response.IsSuccess && response.Value) {
-      const { token, refreshToken: newRefreshToken, expiration } = response.Value;
+    console.log("Refresh token response:", response);
+    
+    if (response.isSuccess && response.value) {
+      const { token, refreshToken: newRefreshToken, expiration } = response.value;
       const newExpirationDate = new Date(expiration);
 
       await db.appConfig.bulkPut([
         { key: REFRESH_TOKEN_KEY, value: newRefreshToken },
-        { key: TOKEN_EXPIRATION_KEY, value: newExpirationDate.toISOString() }
+        { key: TOKEN_EXPIRATION_KEY, value: newExpirationDate.toISOString() },
+        { key: TOKEN_KEY, value: token },
       ]);
       
       sessionStore.setRefreshedToken(token, newExpirationDate);
@@ -93,7 +98,7 @@ const refreshToken = async (): Promise<boolean> => {
       return true;
     } else {
       // Use Errors array from Result object
-      const errorMsg = response.Errors?.join(', ') || 'Session refresh failed.';
+      const errorMsg = response.errors?.join(', ') || 'Session refresh failed.';
       sessionStore.setError(errorMsg); // This might trigger UI to show login
       toastStore.addToast(errorMsg, 'error');
       await logout(false); // Critical: if refresh fails, logout to prevent corrupted state
@@ -122,7 +127,7 @@ const logout = async (notify: boolean = true): Promise<void> => {
   //   console.warn("Error calling backend logout, proceeding with client-side cleanup:", e);
   // }
 
-  await db.appConfig.bulkDelete([REFRESH_TOKEN_KEY, TOKEN_EXPIRATION_KEY]);
+  await db.appConfig.bulkDelete([REFRESH_TOKEN_KEY, TOKEN_EXPIRATION_KEY, TOKEN_KEY]);
   sessionStore.clearSession(); // Clears token from memory via sessionStore
   
   if (notify) {
@@ -135,16 +140,26 @@ const logout = async (notify: boolean = true): Promise<void> => {
 const initializeSession = async (): Promise<void> => {
   sessionStore.setLoading(true);
   try {
+
+    const storedTokenItem = await db.appConfig.get(TOKEN_KEY);
+  const storedToken = storedTokenItem?.value as string | undefined;
+
     const storedExpirationItem = await db.appConfig.get(TOKEN_EXPIRATION_KEY);
     const storedExpiration = storedExpirationItem?.value as string | undefined;
     
     const storedRefreshTokenItem = await db.appConfig.get(REFRESH_TOKEN_KEY);
     const storedRefreshToken = storedRefreshTokenItem?.value as string | undefined;
-
+    console.log("Stored refresh token:", storedRefreshToken);
+    console.log("Stored expiration date:", storedExpiration);
 
     if (storedRefreshToken && storedExpiration) {
       const expirationDate = new Date(storedExpiration);
       if (expirationDate > new Date()) { // If token is potentially valid (not expired)
+        if (storedToken && storedExpiration && new Date(storedExpiration) > new Date()) {
+          sessionStore.setSession(storedToken, true, new Date(storedExpiration));
+          console.log("Session restored from Dexie.");
+          return;
+        }
         const refreshed = await refreshToken(); // Attempt to refresh
         if (!refreshed) {
             // refreshToken() already handles logout on failure
@@ -176,4 +191,3 @@ export const authService = {
   logout,
   initializeSession,
 };
-```

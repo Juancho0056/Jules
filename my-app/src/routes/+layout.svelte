@@ -1,41 +1,45 @@
 <script lang="ts">
   import "../app.css";
-  import ToastNotifications from '$lib/components/common/ToastNotifications.svelte';
-  import SyncIndicator from '$lib/components/common/SyncIndicator.svelte';
+  import ToastNotifications from "$lib/components/common/ToastNotifications.svelte";
+  import SyncIndicator from "$lib/components/common/SyncIndicator.svelte";
   // import { offlineStore } from '$lib/stores/offlineStore'; // Not directly used in the provided new script
-  import { sessionStore } from '$lib/stores/sessionStore'; // Still used implicitly or can be used for other checks
-  import { authService } from '$lib/services/authService';
+  import { sessionStore } from "$lib/stores/sessionStore"; // Still used implicitly or can be used for other checks
+  import { authService } from "$lib/services/authService";
   import { onMount } from "svelte";
 
   // Import for health check
-  import { apiService } from '$lib/services/apiService';
-  import { healthStore, updateHealthStatus } from '$lib/stores/healthStore'; // Using updateHealthStatus helper
+  import { apiService } from "$lib/services/apiService";
+  import { healthStore, updateHealthStatus } from "$lib/stores/healthStore"; // Using updateHealthStatus helper
 
   onMount(async () => {
-    if (typeof window !== 'undefined') { // Ensure it runs only on client
+    if (typeof window !== "undefined") {
+      // Ensure it runs only on client
       // Initialize session
       await authService.initializeSession();
 
       // Perform initial health check
-      updateHealthStatus('checking'); // Set status to checking
+      updateHealthStatus("checking"); // Set status to checking
       try {
         const healthResult = await apiService.checkHealth();
-        if (healthResult.IsSuccess) {
-          updateHealthStatus('healthy');
+        if (healthResult.isSuccess) {
+          updateHealthStatus("healthy");
         } else {
           // If Errors is null or empty, provide a generic message
-          const errorMsg = healthResult.Errors && healthResult.Errors.length > 0 
-                           ? healthResult.Errors.join(', ') 
-                           : 'API health check failed with no specific error details.';
-          updateHealthStatus('unhealthy', errorMsg);
+          const errorMsg =
+            healthResult.errors && healthResult.errors.length > 0
+              ? healthResult.errors.join(", ")
+              : "API health check failed with no specific error details.";
+          updateHealthStatus("unhealthy", errorMsg);
         }
       } catch (e: any) {
         // Catch any exception during the apiService.checkHealth() call itself (e.g., network error not caught by fetchApi)
-        updateHealthStatus('error', e.message || 'A critical error occurred during health check.');
+        updateHealthStatus(
+          "error",
+          e.message || "A critical error occurred during health check."
+        );
       }
     }
   });
-
 </script>
 
 <!-- Rest of the layout remains the same -->

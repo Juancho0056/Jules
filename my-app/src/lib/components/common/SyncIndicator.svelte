@@ -93,7 +93,7 @@
       return;
     }
     toastStore.addToast("Attempting manual sync...", "info");
-    await syncService.processQueue();
+    await syncService.processQueue(true);
     updateQueueStatus(); // Refresh status after attempt
   };
 

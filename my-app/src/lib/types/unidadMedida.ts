@@ -7,14 +7,16 @@ export interface BaseAuditableEntity {
     UsuarioModificacion?: string | null;
 }
 
-export interface BaseEntity<TKey extends (string | number)> extends BaseAuditableEntity {
-    Id: TKey;
-}
 
-export interface UnidadMedida extends BaseEntity<string> {
-    Nombre: string;
-    Abreviatura?: string | null;
-    Orden: number;
+
+export interface UnidadMedida  {
+    codigo: string; // This maps to 'Id' in the backend's BaseEntity<string>
+    nombre: string;
+    abreviatura?: string | null;
+    orden: number;
+    estado: boolean; // This directly maps to BaseAuditableEntity.Estado
+    fechaHoraCreacion: string; // Using string for ISO date strings
+    fechaHoraModificacion: string; // Using string for ISO date strings
 }
 
 export interface CreateUnidadMedidaCommand {
@@ -26,7 +28,7 @@ export interface CreateUnidadMedidaCommand {
 }
 
 export interface UpdateUnidadMedidaCommand {
-    id: string; // This is the server's existing Id for the entity to update
+    codigo: string; // This is the server's existing Id for the entity to update
     nombre: string;
     abreviatura?: string | null;
     orden: number;

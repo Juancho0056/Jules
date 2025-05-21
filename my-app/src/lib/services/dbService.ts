@@ -5,10 +5,10 @@ export interface UnitOfMeasureDbo { // Dbo for Database Object
   localId?: number; // Auto-incremented primary key by Dexie
   id?: string | null; // Server-assigned ID, null if created offline and not synced
   codigo: string;    // Business key, maps to UnidadMedida.Id from server, should be unique
-  Nombre: string;           // Renamed from 'name'
-  Abreviatura?: string | null; // Renamed from 'symbol', optional
-  Orden: number;            // New field
-  Estado: boolean;          // New field
+  nombre: string;           // Renamed from 'name'
+  abreviatura?: string | null; // Renamed from 'symbol', optional
+  orden: number;            // New field
+  estado: boolean;          // New field
   sincronizado: boolean;
   fechaModificacion: Date;
   offlineId?: string | null; // Optional: for client-side temporary ID if needed for UI logic before 'codigo' is set
@@ -39,7 +39,7 @@ export class MyDexieDatabase extends Dexie {
   constructor() {
     super('posOfflineFirstDb'); // Database name
     this.version(1).stores({
-      unitsOfMeasure: '++localId, &codigo, id, Nombre, Abreviatura, Orden, Estado, sincronizado, fechaModificacion, offlineId',
+      unitsOfMeasure: '++localId, &codigo, id, nombre, abreviatura, orden, estado, sincronizado, fechaModificacion, offlineId',
       // 'id' is server ID, 'codigo' is business key. 'localId' is Dexie's auto PK.
       // Index 'id' for quick lookups once server ID is known.
       // Index 'Nombre' for searching/sorting.

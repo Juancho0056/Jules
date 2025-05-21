@@ -5,6 +5,8 @@ import { offlineStore } from './offlineStore';
 import type { ApiError } from '../services/apiService'; // For error type consistency
 import { liveQuery } from 'dexie'; // For reactive updates from Dexie
 import {dexieStore} from './dexieStore'; // For Dexie store utility
+
+
 export interface UnitOfMeasureState {
   units: UnitOfMeasureDbo[];
   isLoading: boolean;
@@ -19,9 +21,9 @@ const initialUnitOfMeasureState: UnitOfMeasureState = {
 
 function createUnitOfMeasureStore() {
   const { subscribe, update, set } = writable<UnitOfMeasureState>(initialUnitOfMeasureState);
-
+  const selectedUnitToEdit = writable<UnitOfMeasureDbo | null>(null);
   // Use Dexie's liveQuery for reactive updates to the units list
-  const dexieUnits = dexieStore(() => db.unitsOfMeasure.orderBy('codigo').toArray());
+  const dexieUnits = dexieStore(() => db.unitsOfMeasure.orderBy('orden').toArray());
 
   const unsubscribeFromLiveQuery = dexieUnits.subscribe((data) => {
     update(state => ({
@@ -75,8 +77,9 @@ function createUnitOfMeasureStore() {
 
       // Queue for backend sync
       // Payload for 'create' should be what API expects (e.g., no localId, no sync status)
-      const apiPayload = { name: newUnit.name, symbol: newUnit.symbol, codigo: newUnit.codigo };
-      await syncService.addToQueue('unitsOfMeasure', 'create', apiPayload, newUnit.codigo);
+      const apiPayload = { nombre: newUnit.nombre, abreviatura: newUnit.abreviatura, codigo: newUnit.codigo, orden: newUnit.orden, estado: newUnit.estado };
+      await syncService.addToQueue('UnidadMedidas', 'create', apiPayload, newUnit.codigo);
+       selectedUnitToEdit.set(null); // Clear selection after successful add
     } catch (err) {
       console.error('Error adding unit to Dexie or queueing:', err);
       const errorToShow = err instanceof Error ? err : new Error(String(err));
@@ -98,12 +101,13 @@ function createUnitOfMeasureStore() {
         sincronizado: false, // Mark as needing sync
         fechaModificacion: new Date(),
       });
-      // liveQuery will automatically update the store's 'units' list.
-      console.log(`Unit with localId ${localId} updated in Dexie.`);
+      console.log('unit changes', unitChanges);
 
       // Payload for 'update' should be only the changes the API expects.
       const apiPayload = { ...unitChanges };
-      await syncService.addToQueue('unitsOfMeasure', 'update', apiPayload, currentCodigo);
+      console.log('apiPayload', apiPayload);
+      await syncService.addToQueue('UnidadMedidas', 'update', apiPayload, currentCodigo);
+      selectedUnitToEdit.set(null);
     } catch (err) {
       console.error(`Error updating unit with localId ${localId} in Dexie or queueing:`, err);
       const errorToShow = err instanceof Error ? err : new Error(String(err));
@@ -122,7 +126,7 @@ function createUnitOfMeasureStore() {
 
       // Payload for 'delete' might be empty or just the key, depending on API.
       // syncService uses entityKey for DELETE path, so payload can be minimal or just the key.
-      await syncService.addToQueue('unitsOfMeasure', 'delete', { codigo }, codigo);
+      await syncService.addToQueue('UnidadMedidas', 'delete', { codigo }, codigo);
     } catch (err) {
       console.error(`Error deleting unit with localId ${localId} from Dexie or queueing:`, err);
       const errorToShow = err instanceof Error ? err : new Error(String(err));
@@ -137,6 +141,14 @@ function createUnitOfMeasureStore() {
       console.log("Unsubscribed from unitOfMeasureStore liveQuery.");
     }
   };
+  const selectUnitToEdit = (unit: UnitOfMeasureDbo) => {
+    selectedUnitToEdit.set(unit);
+  };
+
+  const clearSelectedUnitToEdit = () => {
+    selectedUnitToEdit.set(null);
+  };
+
 
   // Initial isLoading state is true. liveQuery's first emission (next or error) will set it to false.
   // No explicit fetchAll() call needed here for initial load due to liveQuery.
@@ -148,6 +160,9 @@ function createUnitOfMeasureStore() {
     update: updateUnit,
     remove,
     destroy, // Expose destroy for component cleanup
+    selectedUnitToEdit,
+    selectUnitToEdit,
+    clearSelectedUnitToEdit
   };
 }
 

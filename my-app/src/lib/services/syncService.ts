@@ -23,6 +23,7 @@ const addToQueue = async (
       attempts: 0,
       lastAttempt: null,
     };
+    console.log('Adding operation to queue:', operation);
     const opId = await db.pendingOperations.add(operation);
     console.log(`Operation for ${entityName} (${operationType}, key: ${entityKey || 'N/A'}) added to Dexie queue with opId: ${opId}`);
     toastStore.addToast(`${entityName} ${operationType} operation queued.`, 'info', 2000);
@@ -41,7 +42,7 @@ const addToQueue = async (
 
 const MAX_RETRY_ATTEMPTS = 3;
 
-const processQueue = async (): Promise<void> => {
+const processQueue = async (ignoreRetryLimit = false): Promise<void> => {
   if (get(offlineStore).isOffline) {
     console.log('SyncService: Offline, not processing queue.');
     return;
@@ -50,7 +51,7 @@ const processQueue = async (): Promise<void> => {
   const pendingOps = await db.pendingOperations
     .where('status').equals('pending')
     .or('status').equals('failed') // Also retry 'failed' ops that are not past MAX_RETRY_ATTEMPTS
-    .filter(op => (op.attempts || 0) < MAX_RETRY_ATTEMPTS)
+    .filter(op => ignoreRetryLimit || (op.attempts || 0) < MAX_RETRY_ATTEMPTS)
     .sortBy('timestamp');
 
   if (pendingOps.length === 0) {
@@ -75,34 +76,34 @@ const processQueue = async (): Promise<void> => {
       let success = false;
 
       // Standard API path prefix
-      const apiPathPrefix = '/api';
-
+      const apiPathPrefix = '';
+      console.log(op.entityName);
       switch (op.operationType) {
         case 'create':
           if (op.entityName === 'UnidadMedidas') {
             const dbo = op.payload as UnitOfMeasureDbo;
             const createCommand: CreateUnidadMedidaCommand = {
               codigo: dbo.codigo,
-              nombre: dbo.Nombre,
-              abreviatura: dbo.Abreviatura,
-              orden: dbo.Orden,
-              estado: dbo.Estado,
+              nombre: dbo.nombre,
+              abreviatura: dbo.abreviatura,
+              orden: dbo.orden,
+              estado: dbo.estado,
             };
             result = await apiService.post<UnidadMedida>(`${apiPathPrefix}/${op.entityName}`, createCommand);
-            if (result.IsSuccess && result.Value) {
-              const serverUnit = result.Value;
+            if (result.isSuccess && result.value) {
+              const serverUnit = result.value;
               const localUnit = await db.unitsOfMeasure.where('codigo').equals(dbo.codigo).first();
               if (localUnit && localUnit.localId) {
                 await db.unitsOfMeasure.update(localUnit.localId, {
-                  id: serverUnit.Id,
-                  Nombre: serverUnit.Nombre,
-                  Abreviatura: serverUnit.Abreviatura,
-                  Orden: serverUnit.Orden,
-                  Estado: serverUnit.Estado,
+                  id: serverUnit.codigo,
+                  nombre: serverUnit.nombre,
+                  abreviatura: serverUnit.abreviatura,
+                  orden: serverUnit.orden,
+                  estado: serverUnit.estado,
                   sincronizado: true,
-                  fechaModificacion: new Date(serverUnit.FechaHoraModificacion || Date.now()),
+                  fechaModificacion: new Date(serverUnit.fechaHoraModificacion || Date.now()),
                 });
-                console.log(`Synced create for UnidadMedidas ${dbo.codigo}, server ID: ${serverUnit.Id}`);
+                console.log(`Synced create for UnidadMedidas ${dbo.codigo}, server ID: ${serverUnit.codigo}`);
               } else {
                 console.warn(`Local unit with codigo ${dbo.codigo} not found for sync update after create.`);
               }
@@ -122,27 +123,35 @@ const processQueue = async (): Promise<void> => {
             continue;
           }
           if (op.entityName === 'UnidadMedidas') {
+            console.log('op.Payload', op.payload );
             const payloadToUpdate = op.payload as Partial<UnitOfMeasureDbo>;
             const updateCommand: UpdateUnidadMedidaCommand = {
-              id: op.entityKey!, // entityKey is 'codigo', server maps to 'Id'
-              nombre: payloadToUpdate.Nombre!,
-              abreviatura: payloadToUpdate.Abreviatura,
-              orden: payloadToUpdate.Orden!,
-              estado: payloadToUpdate.Estado!,
+              codigo: op.entityKey!, // entityKey is 'codigo', server maps to 'Id'
+              nombre: payloadToUpdate.nombre!,
+              abreviatura: payloadToUpdate.abreviatura,
+              orden: payloadToUpdate.orden!,
+              estado: payloadToUpdate.estado!,
             };
+            console.log(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`);
             result = await apiService.put<UnidadMedida>(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`, updateCommand);
-            if (result.IsSuccess && result.Value) {
-              const serverUnit = result.Value;
+            if (result.isSuccess && result.value) {
+              const serverUnit = result.value;
               const localUnit = await db.unitsOfMeasure.where('codigo').equals(op.entityKey!).first();
               if (localUnit && localUnit.localId) {
-                await db.unitsOfMeasure.update(localUnit.localId, {
-                  Nombre: serverUnit.Nombre,
-                  Abreviatura: serverUnit.Abreviatura,
-                  Orden: serverUnit.Orden,
-                  Estado: serverUnit.Estado,
+                console.log('localUnit', localUnit);
+                const unitDbo: UnitOfMeasureDbo = {
+                  ...localUnit, 
+                  id: payloadToUpdate.codigo,
+                  nombre: payloadToUpdate.nombre ?? localUnit?.nombre,
+                  abreviatura: payloadToUpdate.abreviatura ?? localUnit?.abreviatura,
+                  orden: payloadToUpdate.orden ?? localUnit?.orden ?? 0,
+                  estado: payloadToUpdate.estado ?? localUnit?.estado ?? true,
                   sincronizado: true,
-                  fechaModificacion: new Date(serverUnit.FechaHoraModificacion || Date.now()),
-                });
+                  fechaModificacion: new Date(Date.now()),
+                  offlineId: payloadToUpdate?.offlineId || null
+                };
+
+                await db.unitsOfMeasure.put(unitDbo);
                 console.log(`Synced update for UnidadMedidas ${op.entityKey}`);
               }
               success = true;
@@ -161,7 +170,8 @@ const processQueue = async (): Promise<void> => {
             continue;
           }
           result = await apiService.delete<void>(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`);
-          if (result.IsSuccess) { // Check IsSuccess
+          console.log(`${apiPathPrefix}/${op.entityName}/${op.entityKey}`);
+          if (result.isSuccess) { // Check IsSuccess
             if (op.entityName === 'UnidadMedidas') {
               const localUnit = await db.unitsOfMeasure.where('codigo').equals(op.entityKey).first();
               if (localUnit && localUnit.localId) {
@@ -185,7 +195,7 @@ const processQueue = async (): Promise<void> => {
         toastStore.addToast(`${op.entityName} (key: ${op.entityKey || op.payload?.codigo}) synced successfully.`, 'success', 2000);
       } else {
         // Use Errors array from Result object
-        const errorMsg = result?.Errors?.join(', ') || 'Unknown error during sync.';
+        const errorMsg = result?.errors?.join(', ') || 'Unknown error during sync.';
         console.error(`SyncService: Failed to process opId ${op.opId} (${op.operationType} ${op.entityName} ${op.entityKey || op.payload?.codigo}): ${errorMsg}`);
         toastStore.addToast(`Failed to sync ${op.entityName} (key: ${op.entityKey || op.payload?.codigo}). Will retry.`, 'warning', 3000);
         
@@ -251,25 +261,27 @@ let firstRun = true;
 
 const fetchAllUnidadesMedida = async (): Promise<boolean> => {
   console.log('SyncService: Fetching all Unidades de Medida from server...');
-  const result = await apiService.get<UnidadMedida[]>('/api/UnidadMedidas/all'); // Or /api/UnidadMedidas/activas
+  const result = await apiService.get<UnidadMedida[]>('/UnidadMedidas/all'); // Or /api/UnidadMedidas/activas
 
-  if (result.IsSuccess && result.Value) {
-    const serverUnits = result.Value;
+  if (result.isSuccess && result.value) {
+    const serverUnits = result.value;
     toastStore.addToast(`Fetched ${serverUnits.length} units from server. Updating local store...`, 'info', 3000);
     try {
       for (const serverUnit of serverUnits) {
-        const existingLocalUnit = await db.unitsOfMeasure.where('codigo').equals(serverUnit.Id).first();
+        console.log(`SyncService: Processing server unit ...`, serverUnit);
+        console.log(`SyncService: Processing server unit ${serverUnit.codigo}...` );
+        const existingLocalUnit = await db.unitsOfMeasure.where('codigo').equals(serverUnit.codigo).first();
 
         const unitDbo: UnitOfMeasureDbo = {
           localId: existingLocalUnit?.localId, // Preserve localId if exists for update
-          codigo: serverUnit.Id,               // Server's 'Id' is our 'codigo' (business key)
-          id: serverUnit.Id,                 // Store server's 'Id' also in 'Id' field. Corrected from 'Id' to 'id'
-          Nombre: serverUnit.Nombre,
-          Abreviatura: serverUnit.Abreviatura,
-          Orden: serverUnit.Orden,
-          Estado: serverUnit.Estado,
+          codigo: serverUnit.codigo,               // Server's 'Id' is our 'codigo' (business key)
+          id: serverUnit.codigo,                 // Store server's 'Id' also in 'Id' field. Corrected from 'Id' to 'id'
+          nombre: serverUnit.nombre,
+          abreviatura: serverUnit.abreviatura,
+          orden: serverUnit.orden,
+          estado: serverUnit.estado,
           sincronizado: true,
-          fechaModificacion: new Date(serverUnit.FechaHoraModificacion || Date.now()),
+          fechaModificacion: new Date(serverUnit.fechaHoraModificacion || Date.now()),
           // Preserve offlineId if it exists and you have specific logic for it, otherwise null
           offlineId: existingLocalUnit?.offlineId || null 
         };
@@ -284,32 +296,33 @@ const fetchAllUnidadesMedida = async (): Promise<boolean> => {
       return false;
     }
   } else {
-    const errorMsg = result.Errors?.join(', ') || 'Failed to fetch units from server.';
+    const errorMsg = result.errors?.join(', ') || 'Failed to fetch units from server.';
     console.error('SyncService: Failed to fetch Unidades de Medida:', errorMsg);
     toastStore.addToast(errorMsg, 'error');
     return false;
   }
 };
 
-offlineStore.subscribe(state => {
-  if (firstRun) {
+if (typeof window !== 'undefined') {
+  offlineStore.subscribe(state => {
+    if (firstRun) {
       firstRun = false;
-      if (!state.isOffline) { // If online on first load, try to process.
-          console.log('SyncService: App initialized as online, attempting to process queue.');
-          setTimeout(processQueue, 1000); // Initial delay
+      if (!state.isOffline) {
+        console.log('SyncService: App initialized as online, attempting to process queue.');
+        setTimeout(processQueue, 1000);
       }
       return;
-  }
-  if (!state.isOffline) {
-    console.log('SyncService: Application is now online. Attempting to process queue.');
-    toastStore.addToast('Back online. Starting data synchronization.', 'info');
-    setTimeout(processQueue, 1000); // Delay slightly to allow network to stabilize
-  } else {
-    console.log('SyncService: Application is now offline. Queue processing paused.');
-    toastStore.addToast('Offline. Synchronization paused.', 'warning');
-  }
-});
-
+    }
+    if (!state.isOffline) {
+      console.log('SyncService: Application is now online. Attempting to process queue.');
+      toastStore.addToast('Back online. Starting data synchronization.', 'info');
+      setTimeout(processQueue, 1000);
+    } else {
+      console.log('SyncService: Application is now offline. Queue processing paused.');
+      toastStore.addToast('Offline. Synchronization paused.', 'warning');
+    }
+  });
+}
 export const syncService = {
   addToQueue,
   processQueue, // Expose for manual trigger if needed
