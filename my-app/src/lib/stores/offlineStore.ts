@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { toastStore } from './toastStore';
 import { apiService } from '../services/apiService'; // For health check
 
-interface OfflineState {
+export interface OfflineState {
   isOffline: boolean;
   isHealthChecking: boolean; // To know if a health check is in progress
 }

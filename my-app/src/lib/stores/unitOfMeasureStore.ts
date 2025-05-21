@@ -4,7 +4,7 @@ import { syncService } from '../services/syncService';
 import { offlineStore } from './offlineStore';
 import type { ApiError } from '../services/apiService'; // For error type consistency
 import { liveQuery } from 'dexie'; // For reactive updates from Dexie
-
+import {dexieStore} from './dexieStore'; // For Dexie store utility
 export interface UnitOfMeasureState {
   units: UnitOfMeasureDbo[];
   isLoading: boolean;
@@ -21,19 +21,15 @@ function createUnitOfMeasureStore() {
   const { subscribe, update, set } = writable<UnitOfMeasureState>(initialUnitOfMeasureState);
 
   // Use Dexie's liveQuery for reactive updates to the units list
-  const unitsLiveQuery = liveQuery(() => db.unitsOfMeasure.orderBy('codigo').toArray());
+  const dexieUnits = dexieStore(() => db.unitsOfMeasure.orderBy('codigo').toArray());
 
-  const unsubscribeFromLiveQuery = unitsLiveQuery.subscribe({
-    next: (data) => {
-      update(state => ({ ...state, units: data, isLoading: false, error: null }));
-    },
-    error: (err) => {
-      console.error("LiveQuery error in unitOfMeasureStore:", err);
-      // Ensure err is an Error instance
-      const errorToShow = err instanceof Error ? err : new Error(String(err));
-      update(state => ({ ...state, error: errorToShow, isLoading: false, units: [] })); // Clear units on error
-      // Consider if you want to return a fallback value or re-throw. Dexie's liveQuery expects void or Promise<void>.
-    }
+  const unsubscribeFromLiveQuery = dexieUnits.subscribe((data) => {
+    update(state => ({
+      ...state,
+      units: data,
+      isLoading: false,
+      error: null
+    }));
   });
   
   // Manual fetchAll, e.g., for an explicit refresh button, though liveQuery handles reactivity.
@@ -169,4 +165,4 @@ export const unitOfMeasureStore = createUnitOfMeasureStore();
 // This store should primarily reflect the local Dexie state.
 // The current `offlineStore` in the prompt doesn't show a `fetchAll` for this store, which is good.
 // It only calls `syncService.processQueue()`.
-```
+

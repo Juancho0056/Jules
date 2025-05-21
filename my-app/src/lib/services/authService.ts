@@ -43,7 +43,7 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
       // await goto('/'); // Navigate to dashboard or home page
       return true;
     } else {
-      const errorMsg = response.error?.message || 'Login failed due to unknown server error.';
+      const errorMsg =  'Login failed due to unknown server error.';
       sessionStore.setError(errorMsg);
       toastStore.addToast(`Login failed: ${errorMsg}`, 'error');
       return false;
@@ -91,7 +91,7 @@ const refreshToken = async (): Promise<boolean> => {
       // toastStore.addToast('Session refreshed.', 'info'); // Often too noisy for auto-refresh
       return true;
     } else {
-      const errorMsg = response.error?.message || 'Session refresh failed.';
+      const errorMsg =  'Session refresh failed.';
       sessionStore.setError(errorMsg); // This might trigger UI to show login
       toastStore.addToast(errorMsg, 'error');
       await logout(false); // Critical: if refresh fails, logout to prevent corrupted state
@@ -173,4 +173,4 @@ export const authService = {
   logout,
   initializeSession,
 };
-```
+
