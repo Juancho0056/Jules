@@ -1,17 +1,16 @@
 import { offlineStore } from '../stores/offlineStore';
-import type { Result } from '../types/result';
-import { success, failure } from '../types/result';
+import { Result } from '../types/result'; // Updated import
 import { get } from 'svelte/store';
 import { sessionStore } from '../stores/sessionStore'; // Import sessionStore
 import { authService } from './authService';     // Import authService
 
-const API_BASE_URL = 'https://api.example.com'; // Placeholder
+const API_BASE_URL = 'https://your-actual-api-domain.com'; // Updated API_BASE_URL
 
 // Define public paths that do not require authentication or token refresh logic
 const PUBLIC_PATHS = [
     '/Auth/login',
     '/Auth/refresh-token',
-    '/api/health', // Added /api/health for connectivity checks
+    '/api/health', // Ensure /api/health is present
     // Add other public paths if needed
 ];
 
@@ -37,11 +36,11 @@ async function fetchApi<T>(
     endpoint: string, 
     options: RequestInit = {}, 
     isRetry: boolean = false // Flag to prevent infinite refresh loops
-): Promise<Result<T, ApiError>> {
+): Promise<Result<T>> { // Updated return type
   const isPublicPath = PUBLIC_PATHS.some(path => endpoint.startsWith(path));
 
   if (get(offlineStore).isOffline && !isPublicPath) { // Public paths might still be accessible if specifically needed
-    return failure(new ApiError('Application is in offline mode. Request not sent.', -100));
+    return Result.FailureFromErrors<T>(['Application is in offline mode. Request not sent.']);
   }
 
   // Add token to headers if available and not a public path
@@ -66,7 +65,7 @@ async function fetchApi<T>(
                   };
                   resolve(fetchApi<T>(endpoint, newOptions, true)); // Retry with new token
               } else {
-                  resolve(failure(new ApiError('Token refresh failed, request not retried.', 401)));
+                  resolve(Result.FailureFromErrors<T>(['Token refresh failed, request not retried.']));
               }
           });
       });
@@ -90,7 +89,7 @@ async function fetchApi<T>(
                       };
                       resolve(fetchApi<T>(endpoint, newOptions, true));
                   } else {
-                      resolve(failure(new ApiError('Token refresh failed, request not retried.', 401)));
+                      resolve(Result.FailureFromErrors<T>(['Token refresh failed, request not retried.']));
                   }
               });
            });
@@ -118,55 +117,69 @@ async function fetchApi<T>(
       } else {
         // Refresh failed, authService.refreshToken should have handled logout.
         // Do not retry the request.
-        return failure(new ApiError('Session expired or token refresh failed. Please log in again.', 401));
+        return Result.FailureFromErrors<T>(['Session expired or token refresh failed. Please log in again.']);
       }
     }
 
     if (response.status === 500 && !isPublicPath) { // Server error
       offlineStore.setOfflineMode(true); // Go offline on server errors for non-public paths
-      return failure(new ApiError(`Server error: ${response.statusText || 'Internal Server Error'}`, response.status));
+      const errorMsg = `Server error: ${response.statusText || 'Internal Server Error'}`;
+      return Result.FailureFromErrors<T>([errorMsg]);
     }
 
     if (!response.ok) {
-      let errorBody: any;
+      let errorBodyText: string = 'Could not retrieve error body.';
       try {
-        errorBody = await response.json(); // Try to parse error body as JSON
+        const errorBody = await response.json(); // Try to parse error body as JSON
+        errorBodyText = JSON.stringify(errorBody);
       } catch (e) {
         try {
-            errorBody = await response.text(); // Fallback to text
+            errorBodyText = await response.text(); // Fallback to text
         } catch (e2) {
-            errorBody = 'Could not retrieve error body.';
+            // errorBodyText remains 'Could not retrieve error body.'
         }
       }
-      return failure(new ApiError(`API request failed: ${response.statusText || 'Error'}`, response.status, errorBody));
+      const errorMsg = `API request failed: ${response.statusText || 'Error'} (Status: ${response.status}). Body: ${errorBodyText}`;
+      return Result.FailureFromErrors<T>([errorMsg]);
     }
 
     if (response.status === 204) {
-      return success(null as unknown as T);
+      return Result.Success<T>(null as T); // Use null as T for 204 No Content
     }
 
     const data: T = await response.json();
-    return success(data);
+    return Result.Success<T>(data);
   } catch (error) {
+    const errorMessages: string[] = [];
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
       // If browser thinks it's online but fetch fails, suspect underlying connectivity issues.
       if (typeof window !== 'undefined' && window.navigator.onLine) {
         offlineStore.suspectConnectivity(); // Inform offlineStore
       }
-      return failure(new ApiError('Network error: Failed to fetch. Server may be unreachable.', -101));
+      errorMessages.push('Network error: Failed to fetch. Server may be unreachable.');
+    } else if (error instanceof Error) { // General Error instance check
+      errorMessages.push(`Network or other processing error: ${error.message}`);
+    } else {
+      errorMessages.push('An unknown error occurred during API request.');
     }
-    if (error instanceof Error) { // General Error instance check
-      return failure(new ApiError(`Network or other processing error: ${error.message}`));
-    }
-    return failure(new ApiError('An unknown error occurred during API request.'));
+    return Result.FailureFromErrors<T>(errorMessages);
   }
 }
 
+// Define checkHealth function separately to maintain cleaner object definition
+async function checkHealth(): Promise<Result<any>> {
+  // Endpoint is '/api/health'. It's public.
+  // Assuming a 200 OK with any content means healthy.
+  // If the health endpoint returns specific JSON, T could be that type. For now, 'any' is fine.
+  return fetchApi<any>('/api/health', { method: 'GET' });
+}
+
 export const apiService = {
-  get: <T>(endpoint: string): Promise<Result<T, ApiError>> => fetchApi<T>(endpoint, { method: 'GET' }),
-  post: <T>(endpoint: string, body: unknown): Promise<Result<T, ApiError>> => fetchApi<T>(endpoint, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
-  put: <T>(endpoint: string, body: unknown): Promise<Result<T, ApiError>> => fetchApi<T>(endpoint, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
-  delete: <T>(endpoint: string): Promise<Result<T, ApiError>> => fetchApi<T>(endpoint, { method: 'DELETE' }),
+  get: <T>(endpoint: string): Promise<Result<T>> => fetchApi<T>(endpoint, { method: 'GET' }),
+  post: <T>(endpoint: string, body: unknown): Promise<Result<T>> => fetchApi<T>(endpoint, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+  put: <T>(endpoint: string, body: unknown): Promise<Result<T>> => fetchApi<T>(endpoint, { method: 'PUT', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+  delete: <T>(endpoint: string): Promise<Result<T>> => fetchApi<T>(endpoint, { method: 'DELETE' }),
+  checkHealth, // Add the new function here
   // A way to make calls without the default token handling, for authService itself
   // This is one way to break circular dependency if authService calls apiService.
   // Alternatively, authService can use `fetch` directly for its specific, public endpoints.

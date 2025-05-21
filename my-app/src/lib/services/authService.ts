@@ -1,4 +1,4 @@
-import { apiService, ApiError } from './apiService'; // ApiError for type checking
+import { apiService } from './apiService'; // ApiError is no longer directly used here
 import { db } from './dbService';
 import { sessionStore, type UserProfile } from '../stores/sessionStore';
 import { toastStore } from '../stores/toastStore';
@@ -29,8 +29,8 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
         { email, password, captchaToken }
     );
 
-    if (response.ok && response.value) {
-      const { token, refreshToken, expiration, user } = response.value;
+    if (response.IsSuccess && response.Value) {
+      const { token, refreshToken, expiration, user } = response.Value;
       const expirationDate = new Date(expiration);
 
       await db.appConfig.bulkPut([
@@ -43,14 +43,15 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
       // await goto('/'); // Navigate to dashboard or home page
       return true;
     } else {
-      const errorMsg =  'Login failed due to unknown server error.';
+      // Use Errors array from Result object
+      const errorMsg = response.Errors?.join(', ') || 'Login failed due to unknown server error.';
       sessionStore.setError(errorMsg);
       toastStore.addToast(`Login failed: ${errorMsg}`, 'error');
       return false;
     }
   } catch (error: any) {
-    // Catch any network or unexpected errors
-    const errorMsg = error instanceof ApiError ? error.message : (error.message || 'An unexpected error occurred during login.');
+    // Catch any network or unexpected errors not handled by apiService's Result
+    const errorMsg = error.message || 'An unexpected error occurred during login.';
     sessionStore.setError(errorMsg);
     toastStore.addToast(`Login error: ${errorMsg}`, 'error');
     return false;
@@ -78,8 +79,8 @@ const refreshToken = async (): Promise<boolean> => {
         { refreshToken: storedRefreshToken }
     );
 
-    if (response.ok && response.value) {
-      const { token, refreshToken: newRefreshToken, expiration } = response.value;
+    if (response.IsSuccess && response.Value) {
+      const { token, refreshToken: newRefreshToken, expiration } = response.Value;
       const newExpirationDate = new Date(expiration);
 
       await db.appConfig.bulkPut([
@@ -91,14 +92,16 @@ const refreshToken = async (): Promise<boolean> => {
       // toastStore.addToast('Session refreshed.', 'info'); // Often too noisy for auto-refresh
       return true;
     } else {
-      const errorMsg =  'Session refresh failed.';
+      // Use Errors array from Result object
+      const errorMsg = response.Errors?.join(', ') || 'Session refresh failed.';
       sessionStore.setError(errorMsg); // This might trigger UI to show login
       toastStore.addToast(errorMsg, 'error');
       await logout(false); // Critical: if refresh fails, logout to prevent corrupted state
       return false;
     }
   } catch (error: any) {
-    const errorMsg = error instanceof ApiError ? error.message : (error.message || 'An unexpected error occurred during token refresh.');
+    // Catch any network or unexpected errors not handled by apiService's Result
+    const errorMsg = error.message || 'An unexpected error occurred during token refresh.';
     sessionStore.setError(errorMsg);
     toastStore.addToast(`Refresh token error: ${errorMsg}`, 'error');
     await logout(false);
@@ -173,4 +176,4 @@ export const authService = {
   logout,
   initializeSession,
 };
-
+```

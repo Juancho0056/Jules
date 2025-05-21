@@ -1,39 +1,50 @@
 <script lang="ts">
-  import "../app.css"; // Existing import for Tailwind
+  import "../app.css";
   import ToastNotifications from '$lib/components/common/ToastNotifications.svelte';
-  import SyncIndicator from '$lib/components/common/SyncIndicator.svelte'; // Import SyncIndicator
-  import { offlineStore } from '$lib/stores/offlineStore'; // For optional direct display
-  import { sessionStore } from '$lib/stores/sessionStore'; // For conditional logic if needed here
-  import { authService } from '$lib/services/authService'; // For initializeSession
+  import SyncIndicator from '$lib/components/common/SyncIndicator.svelte';
+  // import { offlineStore } from '$lib/stores/offlineStore'; // Not directly used in the provided new script
+  import { sessionStore } from '$lib/stores/sessionStore'; // Still used implicitly or can be used for other checks
+  import { authService } from '$lib/services/authService';
   import { onMount } from "svelte";
 
-  // Initialize session on application load
+  // Import for health check
+  import { apiService } from '$lib/services/apiService';
+  import { healthStore, updateHealthStatus } from '$lib/stores/healthStore'; // Using updateHealthStatus helper
+
   onMount(async () => {
-    // Make sure this is only called once, typically in the root layout.
     if (typeof window !== 'undefined') { // Ensure it runs only on client
-        await authService.initializeSession();
+      // Initialize session
+      await authService.initializeSession();
+
+      // Perform initial health check
+      updateHealthStatus('checking'); // Set status to checking
+      try {
+        const healthResult = await apiService.checkHealth();
+        if (healthResult.IsSuccess) {
+          updateHealthStatus('healthy');
+        } else {
+          // If Errors is null or empty, provide a generic message
+          const errorMsg = healthResult.Errors && healthResult.Errors.length > 0 
+                           ? healthResult.Errors.join(', ') 
+                           : 'API health check failed with no specific error details.';
+          updateHealthStatus('unhealthy', errorMsg);
+        }
+      } catch (e: any) {
+        // Catch any exception during the apiService.checkHealth() call itself (e.g., network error not caught by fetchApi)
+        updateHealthStatus('error', e.message || 'A critical error occurred during health check.');
+      }
     }
   });
 
 </script>
 
+<!-- Rest of the layout remains the same -->
 <div class="min-h-screen bg-gray-100 text-gray-800">
-  <!-- Example: Optional persistent status directly in layout -->
-  <!-- 
-  <div class="p-2 text-center text-sm { $offlineStore.isOffline ? 'bg-yellow-300 text-yellow-800' : ($sessionStore.isAuthenticated ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800')}">
-    {#if $sessionStore.isAuthenticated}
-      { $offlineStore.isOffline ? 'You are currently offline.' : 'You are online.' }
-    {:else}
-      Not authenticated.
-    {/if}
-  </div>
-  -->
-  
-  <slot /> <!-- Main content of each page -->
+  <slot />
 </div>
 
 <ToastNotifications />
-<SyncIndicator /> <!-- Add the SyncIndicator component here -->
+<SyncIndicator />
 
 <style>
   /* Minimal global styles if necessary */
