@@ -6,6 +6,11 @@
   import { offlineStore } from "$lib/stores/offlineStore";
   import { syncService } from "$lib/services/syncService"; // Import syncService
   import { onMount } from "svelte";
+  import { sessionStore } from '$lib/stores/sessionStore';
+  import { AppClaims } from '$lib/config/appClaims.ts';
+
+  // Claim checking logic
+  $: canCreateUnit = $sessionStore.user?.claims?.includes(AppClaims.UnidadMedida_Create) ?? false;
 
   // showFormForNew controls visibility of the form for creating a new unit.
   // Editing existing units is handled by $unitOfMeasureStore.selectedUnitToEdit.
@@ -58,18 +63,20 @@
 <div class="container mx-auto p-6 bg-gray-50 min-h-screen">
   <div class="flex justify-between items-center mb-6">
     <h1 class="text-3xl font-semibold text-gray-800">Units of Measure</h1>
-    <button
-      on:click={toggleAddNewForm}
-      class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-    >
-      {#if showFormForNew}
-        Cancel New Unit
-      {:else if $selectedUnitToEdit}
-        Add New Unit <!-- If editing, button still says "Add New" to switch context -->
-      {:else}
-        Add New Unit
-      {/if}
-    </button>
+    {#if canCreateUnit}
+      <button
+        on:click={toggleAddNewForm}
+        class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        {#if showFormForNew}
+          Cancel New Unit
+        {:else if $selectedUnitToEdit}
+          Add New Unit <!-- If editing, button still says "Add New" to switch context -->
+        {:else}
+          Add New Unit
+        {/if}
+      </button>
+    {/if}
   </div>
 
   {#if $offlineStore.isOffline}

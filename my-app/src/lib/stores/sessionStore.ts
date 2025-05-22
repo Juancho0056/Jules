@@ -4,6 +4,7 @@ export interface UserProfile { // Example, adjust as per your API's user object
   id: string;
   email: string;
   name?: string;
+  claims?: string[]; // Added claims
   // roles, permissions, etc.
 }
 
@@ -46,7 +47,8 @@ const createSessionStore = () => {
         token: token,
         refreshTokenPresent: refreshTokenExists,
         tokenExpiration: tokenExpiresAt,
-        user: userData || state.user || null, // Keep existing user data if not provided
+        // Ensure claims are handled, defaulting to an empty array if not provided
+        user: userData ? { ...userData, claims: userData.claims || [] } : state.user || null,
         error: null,
         isLoading: false,
       }));
@@ -74,15 +76,19 @@ const createSessionStore = () => {
       update(state => ({ ...state, isLoading: loading, error: null /* Clear error on new loading */ }));
     },
     // Optionally, a method to update just the token if refreshed without changing user data
-    setRefreshedToken: (newToken: string, newExpiration: Date) => {
-        update(state => ({
-            ...state,
-            token: newToken,
-            tokenExpiration: newExpiration,
-            isAuthenticated: true, // Should be true if token refreshed successfully
-            isLoading: false,
-            error: null,
-        }));
+    setRefreshedToken: (newToken: string, newExpiration: Date, claims?: string[]) => {
+        update(state => {
+            const updatedUser = state.user ? { ...state.user, claims: claims || state.user.claims || [] } : null;
+            return {
+                ...state,
+                token: newToken,
+                tokenExpiration: newExpiration,
+                isAuthenticated: true, // Should be true if token refreshed successfully
+                user: updatedUser,
+                isLoading: false,
+                error: null,
+            };
+        });
     }
   };
 };

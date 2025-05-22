@@ -2,17 +2,27 @@ import { apiService } from './apiService'; // ApiError is no longer directly use
 import { db } from './dbService';
 import { sessionStore, type UserProfile } from '../stores/sessionStore';
 import { toastStore } from '../stores/toastStore';
+import { jwtDecode } from 'jwt-decode';
 // import { goto } from '$app/navigation'; // Example for SvelteKit navigation
 
 const TOKEN_KEY = 'app_Token';
 const REFRESH_TOKEN_KEY = 'app_refreshToken';
 const TOKEN_EXPIRATION_KEY = 'app_tokenExpiration';
 
+// Define a type for the decoded JWT payload
+interface DecodedJwt {
+  id: string; // Standard claim for user ID
+  email: string; // Standard claim for email
+  permissions?: string[]; // Custom claim for permissions
+  exp?: number; // Standard claim for expiration time
+  // Add other claims you expect in your JWT
+}
+
 interface LoginResponse {
   token: string;
   refreshToken: string;
   expiration: string; // ISO date string
-  user?: UserProfile; // Optional user profile data
+  user?: UserProfile; // Optional user profile data from backend
 }
 
 interface RefreshResponse {
@@ -32,16 +42,34 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
     console.log("Login response:", response);
     if (response.isSuccess && response.value) {
       console.log("Login response:", response);
-      const { token, refreshToken, expiration, user } = response.value;
+      const { token, refreshToken, expiration, user: backendUser } = response.value;
       const expirationDate = new Date(expiration);
+
+      // Decode token to get claims and potentially user info
+      const decodedToken = jwtDecode<DecodedJwt>(token);
+      const claims = decodedToken.permissions || [];
+      
+      // Construct user profile, prioritizing backend-provided user data
+      let userProfile: UserProfile = {
+        id: backendUser?.id || decodedToken.id,
+        email: backendUser?.email || decodedToken.email,
+        name: backendUser?.name, // Take name from backend if available
+        claims: claims,
+      };
+      
+      // If backendUser exists, spread its properties (like name) and then add/override claims
+      if (backendUser) {
+        userProfile = { ...backendUser, claims: claims };
+      }
+
 
       await db.appConfig.bulkPut([
         { key: REFRESH_TOKEN_KEY, value: refreshToken },
         { key: TOKEN_EXPIRATION_KEY, value: expirationDate.toISOString() },
-        { key: TOKEN_KEY, value: token }, // Store as ISO string or Date object
+        { key: TOKEN_KEY, value: token },
       ]);
       
-      sessionStore.setSession(token, true, expirationDate, user);
+      sessionStore.setSession(token, true, expirationDate, userProfile);
       toastStore.addToast('Login successful!', 'success');
       // await goto('/'); // Navigate to dashboard or home page
       return true;
@@ -87,13 +115,18 @@ const refreshToken = async (): Promise<boolean> => {
       const { token, refreshToken: newRefreshToken, expiration } = response.value;
       const newExpirationDate = new Date(expiration);
 
+      // Decode the new token to extract claims
+      const decodedToken = jwtDecode<DecodedJwt>(token);
+      const claims = decodedToken.permissions || [];
+
       await db.appConfig.bulkPut([
         { key: REFRESH_TOKEN_KEY, value: newRefreshToken },
         { key: TOKEN_EXPIRATION_KEY, value: newExpirationDate.toISOString() },
         { key: TOKEN_KEY, value: token },
       ]);
       
-      sessionStore.setRefreshedToken(token, newExpirationDate);
+      // Pass claims to the updated setRefreshedToken method
+      sessionStore.setRefreshedToken(token, newExpirationDate, claims);
       // toastStore.addToast('Session refreshed.', 'info'); // Often too noisy for auto-refresh
       return true;
     } else {
@@ -155,31 +188,43 @@ const initializeSession = async (): Promise<void> => {
     if (storedRefreshToken && storedExpiration) {
       const expirationDate = new Date(storedExpiration);
       if (expirationDate > new Date()) { // If token is potentially valid (not expired)
-        if (storedToken && storedExpiration && new Date(storedExpiration) > new Date()) {
-          sessionStore.setSession(storedToken, true, new Date(storedExpiration));
-          console.log("Session restored from Dexie.");
+        if (storedToken) {
+          // Decode token to get claims and user info
+          const decodedToken = jwtDecode<DecodedJwt>(storedToken);
+          const claims = decodedToken.permissions || [];
+          const userProfile: UserProfile = {
+            id: decodedToken.id,
+            email: decodedToken.email,
+            // name: decodedToken.name, // Add if name is available in token
+            claims: claims,
+          };
+          sessionStore.setSession(storedToken, true, new Date(storedExpiration), userProfile);
+          console.log("Session restored from Dexie with claims.");
           return;
         }
-        const refreshed = await refreshToken(); // Attempt to refresh
+        // If no token but refresh token exists and is valid, attempt refresh
+        const refreshed = await refreshToken(); 
         if (!refreshed) {
-            // refreshToken() already handles logout on failure
             console.log("Session initialization: refresh token failed or token expired, session cleared.");
         } else {
-            console.log("Session initialization: session successfully refreshed.");
+            console.log("Session initialization: session successfully refreshed with claims via refreshToken.");
         }
       } else {
         // Token expired
         toastStore.addToast('Session expired. Please log in again.', 'warning');
-        await logout(false); // Logout without redundant notification
+        await logout(false); 
       }
     } else {
-      // No refresh token or expiration found, ensure clean state (already handled by initial store state)
-      sessionStore.clearSession(); // Ensure store is clear if there's no token info
-       console.log("Session initialization: no session token found in storage.");
+      sessionStore.clearSession(); 
+      console.log("Session initialization: no session token found in storage.");
     }
-  } catch (error) {
-    console.error('Error during session initialization:', error);
-    await logout(false); // Ensure clean state on error
+  } catch (error: any) {
+    console.error('Error during session initialization:', error.message || error);
+    // Attempt to decode token even on error to see if it's a JWT error
+    if (storedToken && (error.name === 'InvalidTokenError' || error.message?.includes('Invalid token'))) {
+        console.error("Failed to decode stored token during initialization.");
+    }
+    await logout(false); 
   } finally {
     sessionStore.setLoading(false);
   }

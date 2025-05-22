@@ -11,20 +11,22 @@
   import { apiService } from "$lib/services/apiService";
   import { healthStore, updateHealthStatus } from "$lib/stores/healthStore"; // Using updateHealthStatus helper
 
-  onMount(async () => {
-    if (typeof window !== "undefined") {
-      // Ensure it runs only on client
-      // Initialize session
-      await authService.initializeSession();
+  // Import new layout components
+  import Headerbar from "$lib/components/layout/Headerbar.svelte";
+  import Sidebar from "$lib/components/layout/Sidebar.svelte";
 
-      // Perform initial health check
-      updateHealthStatus("checking"); // Set status to checking
+  let showMobileMenu = false; // This will be used later for mobile menu toggle
+
+  onMount(async () => {
+    // ... (existing onMount logic remains the same)
+    if (typeof window !== "undefined") {
+      await authService.initializeSession();
+      updateHealthStatus("checking");
       try {
         const healthResult = await apiService.checkHealth();
         if (healthResult.isSuccess) {
           updateHealthStatus("healthy");
         } else {
-          // If Errors is null or empty, provide a generic message
           const errorMsg =
             healthResult.errors && healthResult.errors.length > 0
               ? healthResult.errors.join(", ")
@@ -32,7 +34,6 @@
           updateHealthStatus("unhealthy", errorMsg);
         }
       } catch (e: any) {
-        // Catch any exception during the apiService.checkHealth() call itself (e.g., network error not caught by fetchApi)
         updateHealthStatus(
           "error",
           e.message || "A critical error occurred during health check."
@@ -42,9 +43,30 @@
   });
 </script>
 
-<!-- Rest of the layout remains the same -->
 <div class="min-h-screen bg-gray-100 text-gray-800">
-  <slot />
+  <Headerbar on:toggleMobileMenu={() => showMobileMenu = !showMobileMenu} />
+  
+  <div class="flex">
+    <Sidebar bind:showMobileMenu />
+    
+    {/* Main content area */}
+    {/* Adjust margin-left on md+ screens to account for sidebar width */}
+    <main class="flex-1 p-4 md:ml-64"> 
+      {/* The Headerbar already has a pt-16 div to push content down */}
+      <slot />
+    </main>
+  </div>
+
+  <!-- Overlay for mobile menu -->
+  {#if showMobileMenu}
+    <div 
+      class="fixed inset-0 bg-black opacity-50 z-30 md:hidden" 
+      on:click={() => showMobileMenu = false}
+      role="button"
+      tabindex="0"
+      aria-label="Close menu"
+    ></div>
+  {/if}
 </div>
 
 <ToastNotifications />
@@ -60,5 +82,10 @@
   }
   :global(html, body) {
     height: 100%;
+  }
+  /* Ensure content area respects header, more specific adjustments might be needed */
+  main {
+    /* The pt-16 for header is handled by a spacer in Headerbar itself or by main content starting after header */
+    /* The md:ml-64 is for the sidebar */
   }
 </style>

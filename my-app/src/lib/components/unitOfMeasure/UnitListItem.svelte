@@ -3,7 +3,14 @@
   import { createEventDispatcher } from "svelte";
   import UnitForm from "./UnitForm.svelte";
   import { unitOfMeasureStore } from "$lib/stores/unitOfMeasureStore";
+  import { sessionStore } from '$lib/stores/sessionStore';
+  import { AppClaims } from '$lib/config/appClaims.ts';
+
   export let unit: UnitOfMeasureDbo; // Type updated to UnitOfMeasureDbo
+
+  // Claim checking logic
+  $: canUpdateUnit = $sessionStore.user?.claims?.includes(AppClaims.UnidadMedida_Update) ?? false;
+  $: canDeleteUnit = $sessionStore.user?.claims?.includes(AppClaims.UnidadMedida_Delete) ?? false;
 
   const { selectedUnitToEdit, clearSelectedUnitToEdit } = unitOfMeasureStore;
 
@@ -78,15 +85,19 @@
     </p>
   </div>
   <div class="flex-shrink-0 ml-4 space-x-2">
-    <button
-      on:click={handleEdit}
-      class="text-blue-600 hover:text-blue-800 mr-3 text-sm font-medium"
-      >Edit</button
-    >
-    <button
-      on:click={handleDelete}
-      class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button
-    >
+    {#if canUpdateUnit}
+      <button
+        on:click={handleEdit}
+        class="text-blue-600 hover:text-blue-800 mr-3 text-sm font-medium"
+        >Edit</button
+      >
+    {/if}
+    {#if canDeleteUnit}
+      <button
+        on:click={handleDelete}
+        class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button
+      >
+    {/if}
   </div>
 </li>
 
