@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { createEventDispatcher, onMount, onDestroy } from "svelte";
+  import { createEventDispatcher, onMount } from "svelte";
   import { writable, derived } from "svelte/store";
-  import { get } from "svelte/store";
   // Props
-  export let data: Array<Record<string, any>> = [];
+  export let data: Record<string, any>[] = [];
+  const dataStore = writable(data);
+
+  // Cuando la prop cambie, actualiza el store:
+  $: dataStore.set(data);
   export let columns: Array<{
     key: string;
     label: string;
@@ -20,33 +23,42 @@
     permission?: string;
   }> = [];
   export let itemsPerPage: number = 10;
-  export let userPermissions: Array<string> = []; // e.g., ['edit_user', 'delete_user']
+  export let userPermissions: Array<string> = [];
 
-  // Internal state as Svelte stores for easier reactivity
+  // State
   const currentPage = writable(1);
   const searchTerm = writable("");
   const sortColumn = writable<string | null>(null);
   const sortDirection = writable<"asc" | "desc">("asc");
   const pageSize = writable(itemsPerPage);
+
   const dispatch = createEventDispatcher();
 
-  // Helper to get cell value
+  // Responsive: columnas visibles
+  $: visibleColumns = columns.filter((col) => col.visible !== false);
+
+  // Helper para obtener valor de celda
   function getCellValue(
     row: Record<string, any>,
-    column: (typeof columns)[0]
+    column: {
+      key: string;
+      label: string;
+      sortable?: boolean;
+      visible?: boolean;
+      isAction?: boolean;
+      format?: (value: any, row: Record<string, any>) => string | number;
+    }
   ): any {
     const value = row[column.key];
     return column.format ? column.format(value, row) : value;
   }
-  const dataStore = writable(data);
-  $: dataStore.set(data);
-  // Derived store for filtered and sorted data
+
+  // Busqueda y ordenamiento
   const filteredAndSortedData = derived(
     [searchTerm, sortColumn, sortDirection, dataStore],
     ([$searchTerm, $sortColumn, $sortDirection, $data]) => {
       let processed = [...$data];
-
-      // Filter
+      // Filtro
       if ($searchTerm) {
         const lowerSearchTerm = $searchTerm.toLowerCase();
         processed = processed.filter((row) =>
@@ -61,8 +73,7 @@
           })
         );
       }
-
-      // Sort
+      // Orden
       if ($sortColumn) {
         processed.sort((a, b) => {
           const valA = a[$sortColumn];
@@ -80,7 +91,6 @@
     }
   );
 
-  // Derived store for paginated data
   const paginatedData = derived(
     [filteredAndSortedData, currentPage, pageSize],
     ([$filteredAndSortedData, $currentPage, $pageSize]) => {
@@ -89,24 +99,23 @@
       return $filteredAndSortedData.slice(start, end);
     }
   );
-
-  const totalPages = derived(
-    [filteredAndSortedData, pageSize],
-    ([$filteredAndSortedData, $pageSize]) => {
-      return Math.max(1, Math.ceil($filteredAndSortedData.length / $pageSize));
-    }
+  function handlePageSizeChange(e: Event) {
+    pageSize.set(Number((e.target as HTMLSelectElement).value));
+    currentPage.set(1);
+  }
+  const totalPages = derived([pageSize, dataStore], ([$pageSize, $data]) =>
+    Math.max(1, Math.ceil($data.length / $pageSize))
   );
-  // Visible columns (respecting the 'visible' prop)
-  $: visibleColumns = columns.filter((col) => col.visible !== false);
-
   function handleSort(columnKey: string) {
-    if (get(sortColumn) === columnKey) {
-      sortDirection.update((dir) => (dir === "asc" ? "desc" : "asc"));
-    } else {
-      sortColumn.set(columnKey);
-      sortDirection.set("asc");
-    }
-    currentPage.set(1); // Reset to first page on sort
+    sortColumn.update((val) => {
+      if (val === columnKey) {
+        sortDirection.update((dir) => (dir === "asc" ? "desc" : "asc"));
+      } else {
+        sortDirection.set("asc");
+      }
+      return columnKey;
+    });
+    currentPage.set(1);
   }
 
   function handleActionClick(eventName: string, row: Record<string, any>) {
@@ -126,44 +135,32 @@
     return true;
   }
 
-  // Debounce search term
-  let searchDebounceTimer: number;
   function handleSearchInput(event: Event) {
-    const inputElement = event.target as HTMLInputElement;
-    clearTimeout(searchDebounceTimer);
-    searchDebounceTimer = window.setTimeout(() => {
-      searchTerm.set(inputElement.value);
-      currentPage.set(1); // Reset to first page on search
-    }, 300);
-  }
-
-  // Ensure data changes from prop are reflected in the store
-  $: if (data) {
-    // This is a bit of a hack to make derived store react to prop changes.
-    // A better way might be to pass `data` directly to derived store's array.
-    // For now, re-assigning to a new writable store if data prop itself changes instance.
-    // This was addressed by wrapping `data` with `writable(data)` in the derived store.
+    const value = (event.target as HTMLInputElement).value;
+    searchTerm.set(value);
+    currentPage.set(1);
   }
 </script>
 
-<div class="advanced-table-wrapper">
-  <div class="table-controls">
+<div class="w-full">
+  <!-- Controles de tabla -->
+  <div
+    class="flex flex-col sm:flex-row items-center justify-between mb-2 gap-2"
+  >
     <input
       type="text"
-      placeholder="Search..."
+      placeholder="Buscar..."
       on:input={handleSearchInput}
-      class="search-input"
-      aria-label="Search table data"
+      class="border border-gray-300 rounded px-3 py-2 text-sm w-full sm:w-64"
+      aria-label="Buscar"
     />
     <div class="flex items-center gap-2">
-      <label for="page-size" class="text-sm text-gray-600"
-        >Filas por página:</label
-      >
+      <label for="page-size" class="text-sm text-gray-600">Filas:</label>
       <select
         id="page-size"
         class="border border-gray-300 rounded px-2 py-1 text-sm"
         bind:value={$pageSize}
-        on:change={() => currentPage.set(1)}
+        on:change={handlePageSizeChange}
       >
         <option value="5">5</option>
         <option value="10">10</option>
@@ -172,24 +169,18 @@
         <option value="100">100</option>
       </select>
     </div>
-    <!-- Future: Column visibility toggle button -->
   </div>
 
+  <!-- Tabla principal -->
   <div
-    class="table-container"
-    role="region"
-    aria-labelledby="table-caption"
-    tabindex="0"
+    class="overflow-x-auto rounded shadow border border-gray-200 bg-white max-h-[70vh]"
   >
-    <table class="advanced-table">
-      <caption id="table-caption" class="visually-hidden">List of items</caption
-      >
+    <table class="min-w-full text-xs sm:text-sm md:text-base bg-white">
       <thead>
         <tr>
           {#each visibleColumns as column (column.key)}
             <th
-              scope="col"
-              class:sortable={column.sortable}
+              class="px-2 sm:px-4 py-2 border-b border-gray-100 bg-gray-50 font-bold text-gray-700 cursor-pointer select-none whitespace-nowrap"
               on:click={() => column.sortable && handleSort(column.key)}
               aria-sort={$sortColumn === column.key
                 ? $sortDirection === "asc"
@@ -202,12 +193,29 @@
                 column.sortable &&
                 handleSort(column.key)}
             >
-              {column.label}
-              {#if $sortColumn === column.key}
-                <span aria-hidden="true"
-                  >{$sortDirection === "asc" ? " ▲" : " ▼"}</span
-                >
-              {/if}
+              <span class="flex items-center gap-1">
+                {column.label}
+                {#if column.sortable}
+                  <svg
+                    class="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M6 9l6 6 6-6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                {/if}
+                {#if $sortColumn === column.key}
+                  <span aria-hidden="true"
+                    >{$sortDirection === "asc" ? "▲" : "▼"}</span
+                  >
+                {/if}
+              </span>
             </th>
           {/each}
         </tr>
@@ -215,30 +223,33 @@
       <tbody>
         {#if $paginatedData.length === 0}
           <tr>
-            <td colspan={visibleColumns.length} class="no-data-message">
-              {$searchTerm ? "No results found." : "No data available."}
+            <td
+              colspan={visibleColumns.length}
+              class="py-6 text-center text-gray-500 italic"
+            >
+              {$searchTerm ? "Sin resultados." : "Sin datos."}
             </td>
           </tr>
         {/if}
         {#each $paginatedData as row (row.id || JSON.stringify(row))}
-          <!-- Assuming row.id or unique key -->
-          <tr class:sync-pending={row.syncPending}>
-            <!-- Mock sync pending -->
+          <tr class="hover:bg-gray-50">
             {#each visibleColumns as column (column.key)}
-              <td>
+              <td
+                class="px-2 sm:px-4 py-2 border-b border-gray-100 align-middle whitespace-nowrap"
+              >
                 {#if column.isAction}
-                  <div class="action-buttons">
+                  <div class="flex gap-2">
                     {#each actions as action (action.eventName)}
                       {#if canShowAction(action, row)}
                         <button
                           type="button"
-                          class="btn-action {action.class || ''}"
+                          class="px-2 py-1 text-xs sm:text-sm rounded border border-gray-300 shadow-sm font-semibold bg-white hover:bg-gray-100 focus:ring-2 focus:ring-blue-400 transition {action.class ||
+                            ''}"
                           on:click={() =>
                             handleActionClick(action.eventName, row)}
                           disabled={action.disabled
                             ? action.disabled(row)
                             : false}
-                          aria-label={`${action.label} ${row[columns.find((c) => c.key !== "actions" && c.key !== "id")?.key || "item"]}`}
                         >
                           {action.label}
                         </button>
@@ -246,9 +257,7 @@
                     {/each}
                   </div>
                 {:else}
-                  {@html column.format
-                    ? column.format(row[column.key], row)
-                    : row[column.key]}
+                  {getCellValue(row, column)}
                 {/if}
               </td>
             {/each}
@@ -258,159 +267,32 @@
     </table>
   </div>
 
+  <!-- Controles de paginación -->
   {#if $totalPages > 1}
-    <div class="pagination-controls">
+    <div
+      class="flex flex-col sm:flex-row justify-center items-center gap-2 mt-4"
+    >
       <button
         type="button"
+        class="px-3 py-1 bg-gray-100 border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
         on:click={() => currentPage.update((p) => Math.max(1, p - 1))}
         disabled={$currentPage === 1}
-        aria-label="Previous page"
+        aria-label="Página anterior"
       >
-        Previous
+        Anterior
       </button>
-      <span>Page {$currentPage} of {$totalPages}</span>
+      <span class="text-gray-600 text-sm"
+        >Página {$currentPage} de {$totalPages}</span
+      >
       <button
         type="button"
+        class="px-3 py-1 bg-gray-100 border border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
         on:click={() => currentPage.update((p) => Math.min($totalPages, p + 1))}
         disabled={$currentPage === $totalPages}
-        aria-label="Next page"
+        aria-label="Página siguiente"
       >
-        Next
+        Siguiente
       </button>
     </div>
   {/if}
 </div>
-
-<style>
-  .advanced-table-wrapper {
-    width: 100%;
-    font-family: sans-serif;
-  }
-  .table-controls {
-    margin-bottom: 1rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .search-input {
-    padding: 0.75rem 0.5rem; /* Consistent with other inputs */
-    min-height: 44px; /* Ensure minimum touch target height */
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 0.9rem; /* Can be 1rem for consistency, but 0.9 is often fine for search */
-    box-sizing: border-box;
-  }
-  .table-container {
-    overflow-x: auto; /* Horizontal scroll on small screens */
-    border: 1px solid #ddd;
-    border-radius: 4px;
-  }
-  .advanced-table {
-    width: 100%;
-    border-collapse: collapse;
-    min-width: 600px; /* Ensure table has a min-width for structure before scroll */
-  }
-  .advanced-table th,
-  .advanced-table td {
-    padding: 0.75rem;
-    text-align: left;
-    border-bottom: 1px solid #ddd;
-    white-space: nowrap; /* Prevent text wrapping that might break layout */
-  }
-  .advanced-table th {
-    background-color: #f7f7f7;
-    font-weight: bold;
-    cursor: default;
-  }
-  .advanced-table th.sortable {
-    cursor: pointer;
-  }
-  .advanced-table th.sortable:hover {
-    background-color: #efefef;
-  }
-  .advanced-table tr:last-child td {
-    border-bottom: none;
-  }
-  .advanced-table tr:hover {
-    background-color: #f1f1f1;
-  }
-  .action-buttons {
-    display: flex;
-    gap: 0.5rem;
-  }
-  .btn-action {
-    padding: 0.5rem 0.75rem; /* Increased padding for better touch */
-    font-size: 0.875rem; /* Slightly larger font */
-    min-height: 38px; /* Closer to 44px with padding */
-    border: 1px solid #ccc;
-    background-color: #fff;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .btn-action:hover {
-    background-color: #eee;
-  }
-  .btn-action:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .pagination-controls {
-    margin-top: 1rem;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .pagination-controls button {
-    padding: 0.6rem 1rem; /* Increased padding */
-    min-height: 44px; /* Ensure touch target height */
-    border: 1px solid #ccc;
-    background-color: #fff;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  .pagination-controls button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .pagination-controls span {
-    padding: 0 0.5rem;
-  }
-  .no-data-message {
-    text-align: center;
-    padding: 2rem;
-    color: #777;
-    font-style: italic;
-  }
-  .visually-hidden {
-    /* For accessibility */
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    border: 0;
-  }
-  .sync-pending td:first-child::before {
-    /* Mock indicator */
-    content: "⏳ "; /* Simple emoji, replace with SVG or class-based icon */
-    display: inline-block;
-    margin-right: 0.5em;
-    font-style: normal; /* Ensure emoji isn't italic if cell is */
-  }
-
-  /* Responsive adjustments */
-  @media (max-width: 768px) {
-    /* On smaller screens, action buttons might be better stacked or icons only */
-    .btn-action {
-      /* Could make buttons smaller or icon-only */
-    }
-    .advanced-table th,
-    .advanced-table td {
-      /* Consider reducing padding slightly on very small screens if needed */
-      /* white-space: normal; /* Allow wrapping if really needed, but might look messy */
-    }
-  }
-</style>
