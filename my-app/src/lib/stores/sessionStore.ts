@@ -4,9 +4,15 @@ export interface UserProfile { // Example, adjust as per your API's user object
   id: string;
   email: string;
   name?: string;
+  claims?: UserClaims;
   // roles, permissions, etc.
 }
-
+export interface UserClaims {
+  email: string;
+  sub: string;
+  roles: string[];
+  [key: string]: any;
+}
 export interface SessionState {
   isAuthenticated: boolean;
   token: string | null;
@@ -15,6 +21,7 @@ export interface SessionState {
   refreshTokenPresent: boolean; 
   tokenExpiration: Date | null; 
   user: UserProfile | null;
+  claims?: UserClaims;
   error: string | null;
   isLoading: boolean;
 }
@@ -38,7 +45,8 @@ const createSessionStore = () => {
         token: string, 
         refreshTokenExists: boolean, // Indicates if a new refresh token was set in Dexie
         tokenExpiresAt: Date, 
-        userData?: UserProfile | null
+        userData?: UserProfile | null,
+        claims?: UserClaims | null
     ) => {
       update(state => ({
         ...state,
@@ -49,6 +57,7 @@ const createSessionStore = () => {
         user: userData || state.user || null, // Keep existing user data if not provided
         error: null,
         isLoading: false,
+        claims: claims || state.claims // Keep existing claims if not provided
       }));
     },
     clearSession: () => {

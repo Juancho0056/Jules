@@ -40,8 +40,9 @@ const login = async (email: string, password: string, captchaToken?: string): Pr
         { key: TOKEN_EXPIRATION_KEY, value: expirationDate.toISOString() },
         { key: TOKEN_KEY, value: token }, // Store as ISO string or Date object
       ]);
-      
-      sessionStore.setSession(token, true, expirationDate, user);
+      const claims = extractClaims(token);
+      sessionStore.setSession(token, true, expirationDate, user, claims);
+      //sessionStore.setSession(token, true, expirationDate, user);
       toastStore.addToast('Login successful!', 'success');
       // await goto('/'); // Navigate to dashboard or home page
       return true;
@@ -142,22 +143,22 @@ const initializeSession = async (): Promise<void> => {
   try {
 
     const storedTokenItem = await db.appConfig.get(TOKEN_KEY);
-  const storedToken = storedTokenItem?.value as string | undefined;
+    const storedToken = storedTokenItem?.value as string | undefined;
 
     const storedExpirationItem = await db.appConfig.get(TOKEN_EXPIRATION_KEY);
     const storedExpiration = storedExpirationItem?.value as string | undefined;
     
     const storedRefreshTokenItem = await db.appConfig.get(REFRESH_TOKEN_KEY);
     const storedRefreshToken = storedRefreshTokenItem?.value as string | undefined;
-    console.log("Stored refresh token:", storedRefreshToken);
-    console.log("Stored expiration date:", storedExpiration);
+
 
     if (storedRefreshToken && storedExpiration) {
       const expirationDate = new Date(storedExpiration);
       if (expirationDate > new Date()) { // If token is potentially valid (not expired)
         if (storedToken && storedExpiration && new Date(storedExpiration) > new Date()) {
-          sessionStore.setSession(storedToken, true, new Date(storedExpiration));
-          console.log("Session restored from Dexie.");
+          const claims = extractClaims(storedToken);
+          sessionStore.setSession(storedToken, true, new Date(storedExpiration), null, claims);
+          
           return;
         }
         const refreshed = await refreshToken(); // Attempt to refresh
@@ -184,7 +185,43 @@ const initializeSession = async (): Promise<void> => {
     sessionStore.setLoading(false);
   }
 };
+function parseJwt(token: string) {
+  if (!token) return null;
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
 
+function extractClaims(token: string) {
+  const payload = parseJwt(token);
+  if (!payload) return null;
+
+  const rolesRaw = payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'];
+  // Puede venir como string o array:
+  const roles = Array.isArray(rolesRaw) ? rolesRaw : [rolesRaw].filter(Boolean);
+
+  const permisos = Array.isArray(payload.permiso) ? payload.permiso : [];
+
+  return {
+    sub: payload.sub,
+    email: payload.email ?? payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'],
+    roles,
+    permisos,
+    exp: payload.exp,
+    jti: payload.jti,
+    // Puedes añadir otros claims si los necesitas
+  };
+}
 export const authService = {
   login,
   refreshToken,

@@ -59,7 +59,7 @@
   });
 </script>
 
-<div class="container mx-auto p-6 bg-gray-50 min-h-screen">
+<div class="container mx-auto bg-gray-50 min-h-screen">
   <div class="flex justify-between items-center mb-6">
     <h1 class="text-3xl font-semibold text-gray-800">Units of Measure</h1>
     <button

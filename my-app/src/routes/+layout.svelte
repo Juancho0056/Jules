@@ -2,14 +2,20 @@
   import "../app.css";
   import ToastNotifications from "$lib/components/common/ToastNotifications.svelte";
   import SyncIndicator from "$lib/components/common/SyncIndicator.svelte";
-  // import { offlineStore } from '$lib/stores/offlineStore'; // Not directly used in the provided new script
-  import { sessionStore } from "$lib/stores/sessionStore"; // Still used implicitly or can be used for other checks
   import { authService } from "$lib/services/authService";
   import { onMount } from "svelte";
-
+  import AppLayout from "$lib/components/layout/AppLayout.svelte";
   // Import for health check
   import { apiService } from "$lib/services/apiService";
   import { healthStore, updateHealthStatus } from "$lib/stores/healthStore"; // Using updateHealthStatus helper
+  import { page } from "$app/stores";
+  let isPublicPage = false;
+
+  // Reaccionar a cambios en la URL
+  $: {
+    const path = $page?.url?.pathname ?? "";
+    isPublicPage = path.startsWith("/login");
+  }
 
   onMount(async () => {
     if (typeof window !== "undefined") {
@@ -43,9 +49,15 @@
 </script>
 
 <!-- Rest of the layout remains the same -->
-<div class="min-h-screen bg-gray-100 text-gray-800">
+{#if isPublicPage}
+  <!-- No usar layout para /login -->
   <slot />
-</div>
+{:else}
+  <!-- Usar layout para el resto -->
+  <AppLayout>
+    <slot />
+  </AppLayout>
+{/if}
 
 <ToastNotifications />
 <SyncIndicator />
