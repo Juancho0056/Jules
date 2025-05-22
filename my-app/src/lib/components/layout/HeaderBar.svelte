@@ -11,6 +11,7 @@
   import { authService } from "$lib/services/authService"; // Asumiendo que logout está aquí
   import { syncIndicatorVisible } from "$lib/stores/syncIndicatorStore";
   import { offlineStore, type OfflineState } from "$lib/stores/offlineStore";
+  import { toastStore } from "$lib/stores/toastStore";
 
   let currentOfflineState: OfflineState;
   const offlineStoreUnsubscribe = offlineStore.subscribe((value) => {
@@ -58,6 +59,16 @@
     authService.logout();
     goto("/login");
   }
+
+  async function handleManualRefreshToken() {
+    const result = await authService.refreshToken();
+    console.log("Token refreshed:", result);
+    if (result) {
+      toastStore.addToast("Token refrescado exitosamente", "success");
+    } else {
+      toastStore.addToast("No se pudo refrescar el token", "error");
+    }
+  }
 </script>
 
 <nav
@@ -94,6 +105,12 @@
       <div class="flex items-center gap-4">
         <!-- Estado de conexión -->
         <div class="flex items-center text-xs text-gray-400">
+          <button
+            class="ml-2 px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+            on:click={handleManualRefreshToken}
+          >
+            Refrescar Token
+          </button>
           <!-- Botón de estado y ayuda en el header -->
           <button
             class="flex items-center gap-1 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded transition shadow text-xs font-medium ml-2"
