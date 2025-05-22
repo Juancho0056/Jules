@@ -23,6 +23,26 @@
   });
 
   let currentIsAuthenticated: boolean = false;
+  const updateQueueStatus = async () => {
+    if (!currentIsAuthenticated) {
+      // Guard against running if not authenticated
+      // If not authenticated and polling is somehow active, stop it.
+      if (statusInterval) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+      }
+      queueStatus.set(null); // Ensure queue status is cleared
+      return;
+    }
+    try {
+      const status = await syncService.getQueueStatus();
+      queueStatus.set(status);
+    } catch (e) {
+      console.error("Failed to get queue status:", e);
+      queueStatus.set(null); // Clear on error
+    }
+  };
+
   const sessionStoreUnsubscribe = sessionStore.subscribe((value) => {
     const previousIsAuthenticated = currentIsAuthenticated;
     currentIsAuthenticated = value.isAuthenticated;
@@ -43,26 +63,6 @@
       }
     }
   });
-
-  const updateQueueStatus = async () => {
-    if (!currentIsAuthenticated) {
-      // Guard against running if not authenticated
-      // If not authenticated and polling is somehow active, stop it.
-      if (statusInterval) {
-        clearInterval(statusInterval);
-        statusInterval = null;
-      }
-      queueStatus.set(null); // Ensure queue status is cleared
-      return;
-    }
-    try {
-      const status = await syncService.getQueueStatus();
-      queueStatus.set(status);
-    } catch (e) {
-      console.error("Failed to get queue status:", e);
-      queueStatus.set(null); // Clear on error
-    }
-  };
 
   onMount(() => {
     // Initial check on mount

@@ -9,7 +9,7 @@
   import { apiService } from "$lib/services/apiService";
   import { healthStore, updateHealthStatus } from "$lib/stores/healthStore"; // Using updateHealthStatus helper
   import { page } from "$app/stores";
-  import FooterBar from "$lib/components/layout/FooterBar.svelte";
+
   let isPublicPage = false;
 
   // Reaccionar a cambios en la URL
@@ -61,7 +61,6 @@
 {/if}
 
 <ToastNotifications />
-<SyncIndicator />
 
 <style>
   /* Minimal global styles if necessary */

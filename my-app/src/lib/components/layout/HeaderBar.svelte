@@ -2,10 +2,20 @@
   import { goto } from "$app/navigation";
   import { onMount, onDestroy } from "svelte";
   import { sidebarOpen } from "$lib/stores/sidebarStore";
-
+  import { isOnline } from "$lib/stores/connectivityStore";
+  // Usa un ícono (ejemplo Heroicons, Lucide o FontAwesome). Aquí con Heroicons:
+  // Puedes instalar con: npm i @heroicons/svelte
+  import { Cloud, CloudOff, Info } from "lucide-svelte"; // O el ícono que prefieras
   // Cambia import para el store correcto:
   import { sessionStore } from "$lib/stores/sessionStore";
   import { authService } from "$lib/services/authService"; // Asumiendo que logout está aquí
+  import { syncIndicatorVisible } from "$lib/stores/syncIndicatorStore";
+  import { offlineStore, type OfflineState } from "$lib/stores/offlineStore";
+
+  let currentOfflineState: OfflineState;
+  const offlineStoreUnsubscribe = offlineStore.subscribe((value) => {
+    currentOfflineState = value;
+  });
 
   let dropdownOpen = false;
   let dropdownRef: HTMLDivElement;
@@ -83,7 +93,28 @@
 
       <div class="flex items-center gap-4">
         <!-- Estado de conexión -->
-        <div class="flex items-center text-xs text-gray-400"></div>
+        <div class="flex items-center text-xs text-gray-400">
+          <!-- Botón de estado y ayuda en el header -->
+          <button
+            class="flex items-center gap-1 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded transition shadow text-xs font-medium ml-2"
+            aria-label="Estado de sincronización"
+            on:click={() => {
+              syncIndicatorVisible.set(true);
+              console.log("Sync indicator opened");
+            }}
+          >
+            {#if currentOfflineState.isOffline}
+              <CloudOff class="w-4 h-4 text-red-500" />
+              <span class="hidden sm:inline text-red-700">Offline</span>
+            {:else}
+              <Cloud class="w-4 h-4 text-green-500" />
+              <span class="hidden sm:inline text-green-700">Online</span>
+            {/if}
+            {#if currentOfflineState.isHealthChecking}(checking...) <!-- Use the reactive variable -->
+            {/if}
+            <Info class="w-3 h-3 text-gray-500 ml-1" />
+          </button>
+        </div>
 
         <!-- Dropdown -->
         <div class="relative" bind:this={dropdownRef}>
