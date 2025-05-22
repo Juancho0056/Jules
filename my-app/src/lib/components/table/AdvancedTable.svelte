@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from "svelte";
   import { writable, derived } from "svelte/store";
+  import UnitListItem from "$lib/components/unitOfMeasure/UnitListItem.svelte";
+  import DataCard from "$lib/components/common/DataCard.svelte";
   // Props
   export let data: Record<string, any>[] = [];
   const dataStore = writable(data);
@@ -140,6 +142,12 @@
     searchTerm.set(value);
     currentPage.set(1);
   }
+  function handleCardAction(
+    event: CustomEvent<{ eventName: string; row: Record<string, any> }>
+  ) {
+    const { eventName, row } = event.detail;
+    handleActionClick(eventName, row);
+  }
 </script>
 
 <div class="w-full">
@@ -170,10 +178,20 @@
       </select>
     </div>
   </div>
-
+  <!-- En Mobile: Renderiza cards -->
+  <div class="block sm:hidden">
+    {#each $paginatedData as row (row.id)}
+      <DataCard
+        {row}
+        columns={visibleColumns}
+        {actions}
+        on:action={handleCardAction}
+      />
+    {/each}
+  </div>
   <!-- Tabla principal -->
   <div
-    class="overflow-x-auto rounded shadow border border-gray-200 bg-white max-h-[70vh]"
+    class="hidden sm:block overflow-x-auto rounded shadow border border-gray-200 bg-white max-h-[70vh]"
   >
     <table class="min-w-full text-xs sm:text-sm md:text-base bg-white">
       <thead>
