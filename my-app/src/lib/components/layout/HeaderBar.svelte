@@ -3,8 +3,6 @@
   import { onMount, onDestroy } from "svelte";
   import { sidebarOpen } from "$lib/stores/sidebarStore";
   import { isOnline } from "$lib/stores/connectivityStore";
-  // Usa un ícono (ejemplo Heroicons, Lucide o FontAwesome). Aquí con Heroicons:
-  // Puedes instalar con: npm i @heroicons/svelte
   import { Cloud, CloudOff, Info } from "lucide-svelte"; // O el ícono que prefieras
   // Cambia import para el store correcto:
   import { sessionStore } from "$lib/stores/sessionStore";
