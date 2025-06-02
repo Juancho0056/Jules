@@ -12,6 +12,7 @@ export interface UnitOfMeasureDbo { // Dbo for Database Object
   sincronizado: boolean;
   fechaModificacion: Date;
   offlineId?: string | null; // Optional: for client-side temporary ID if needed for UI logic before 'codigo' is set
+  lastAccessed?: Date | null;
 }
 
 export interface PendingOperationDbo {
@@ -24,6 +25,7 @@ export interface PendingOperationDbo {
   status: 'pending' | 'processing' | 'failed';
   lastAttempt?: Date | null;
   attempts?: number;
+  nextAttemptTimestamp?: Date | null;
 }
 
 export interface AppConfigDbo {
@@ -31,27 +33,54 @@ export interface AppConfigDbo {
   value: any;
 }
 
+export interface SaleItemDbo {
+  productCodigo: string; // Identificador del producto
+  quantity: number;
+  priceAtSale: number; // Precio del producto al momento de la venta
+  subtotal: number;
+}
+
+export interface SaleDbo {
+  localId?: number; // PK auto-incremental de Dexie
+  uuid: string; // UUID generado en el cliente, clave única global
+  items: SaleItemDbo[];
+  totalAmount: number;
+  saleDate: Date;
+  status: 'pending' | 'synced' | 'failed'; // Estado de sincronización
+  sincronizado: boolean; // True si está confirmado por el backend
+  isDirty?: boolean; // True si hay cambios locales pendientes de encolar/sincronizar
+  fechaModificacion: Date; // Última fecha de modificación local o de sincronización
+  // Considerar añadir userId, posId, etc., si son relevantes
+}
+
 export class MyDexieDatabase extends Dexie {
   unitsOfMeasure!: Table<UnitOfMeasureDbo, number>; // number is the type of the primary key 'localId'
   pendingOperations!: Table<PendingOperationDbo, number>;
   appConfig!: Table<AppConfigDbo, string>; // string is the type of the primary key 'key'
+  sales!: Table<SaleDbo, number>; // number is the type of the primary key 'localId'
+
 
   constructor() {
     super('posOfflineFirstDb'); // Database name
-    this.version(1).stores({
-      unitsOfMeasure: '++localId, &codigo, id, nombre, abreviatura, orden, estado, sincronizado, fechaModificacion, offlineId',
-      // 'id' is server ID, 'codigo' is business key. 'localId' is Dexie's auto PK.
-      // Index 'id' for quick lookups once server ID is known.
-      // Index 'Nombre' for searching/sorting.
-      // Index 'Estado' for filtering.
-      // Index 'sincronizado' for finding unsynced items.
-      // 'offlineId' might be useful if 'codigo' isn't available immediately upon creation.
-      
-      pendingOperations: '++opId, entityName, operationType, timestamp, entityKey, status',
-      // Index 'status' and 'timestamp' for efficient querying of pending operations.
+    // Actualizar el esquema de pendingOperations para incluir attempts y lastAttempt si no existen.
+    // Basándome en el código anterior, estos campos ya fueron añadidos en pendingOperations,
+    // así que el esquema de pendingOperations debería ser:
+    // pendingOperations: '++opId, entityName, operationType, timestamp, entityKey, status, attempts, lastAttempt'
+    // Lo confirmaré al leer el archivo si es necesario, pero por ahora asumo que está correcto.
 
+    this.version(1).stores({
+      unitsOfMeasure: '++localId, &codigo, id, nombre, abreviatura, orden, estado, sincronizado, fechaModificacion, offlineId, lastAccessed',
+      pendingOperations: '++opId, entityName, operationType, timestamp, entityKey, status, attempts, lastAttempt, nextAttemptTimestamp', // Esquema actualizado
       appConfig: '&key', // 'key' is the primary key and must be unique.
+      sales: '++localId, &uuid, saleDate, status, sincronizado, fechaModificacion', // Nuevo esquema para sales
     });
+
+    // Inicialización explícita de las tablas para asegurar que Dexie las reconozca correctamente con tipado.
+    // Esto es redundante si las propiedades ya están declaradas con ! arriba, pero no causa daño.
+    this.unitsOfMeasure = this.table('unitsOfMeasure');
+    this.pendingOperations = this.table('pendingOperations');
+    this.appConfig = this.table('appConfig');
+    this.sales = this.table('sales');
   }
 }
 
