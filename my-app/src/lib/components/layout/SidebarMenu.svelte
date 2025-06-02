@@ -5,7 +5,7 @@
   import { sidebarOpen } from "$lib/stores/sidebarStore";
   import { sessionStore } from "$lib/stores/sessionStore";
   import { authService } from "$lib/services/authService";
-
+  import { Home, Package, Tag, ShoppingCart } from "lucide-svelte";
   let open = false;
 
   const unsubscribe = sidebarOpen.subscribe((val) => {
@@ -31,7 +31,13 @@
     authService.logout();
     goto("/login");
   }
-
+  // Map string icon name (lucide) to the component
+  const iconMap: Record<string, any> = {
+    "lucide:package": Package,
+    "lucide:tag": Tag,
+    "lucide:cart": ShoppingCart,
+    // ...
+  };
   const menuItems = [
     {
       path: "/admin/unidades",
@@ -114,14 +120,15 @@
     ${open ? "translate-x-0" : "-translate-x-full"}`}
   aria-label="Sidebar"
 >
+  <!-- Header -->
   <div class="flex items-center justify-between px-4 py-2 sm:justify-end">
     <a href="/" class="flex items-center">
       <span
         class="self-center text-xl font-semibold sm:text-2xl dark:text-white"
-        >POS App</span
       >
+        POS App
+      </span>
     </a>
-
     <button
       data-drawer-target="logo-sidebar"
       data-drawer-toggle="logo-sidebar"
@@ -140,6 +147,8 @@
       </svg>
     </button>
   </div>
+
+  <!-- Menu items -->
   <div
     class="flex h-full flex-col justify-between overflow-y-auto bg-white px-3 pb-4 dark:bg-gray-800"
   >
@@ -149,28 +158,41 @@
           <li>
             <a
               href={item.path}
-              class="group flex items-center rounded-lg p-2 text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-gray-700"
-              class:bg-gray-100={isActive(item.path, $page.url.pathname)}
+              class="group flex items-center rounded-lg p-2 text-gray-900 hover:bg-orange-100 dark:text-white dark:hover:bg-gray-700 transition font-semibold"
+              class:bg-orange-50={isActive(item.path, $page.url.pathname)}
             >
-              <span class="text-lg">{item.icon}</span>
-              <span class="ms-3">{item.label}</span>
+              <!-- Soporte lucide y emoji -->
+              {#if item.icon?.startsWith("lucide:")}
+                {#if iconMap[item.icon]}
+                  <svelte:component
+                    this={iconMap[item.icon]}
+                    class="w-5 h-5 mr-2 text-orange-500"
+                  />
+                {/if}
+              {:else}
+                <span class="text-lg mr-2">{item.icon}</span>
+              {/if}
+              <span class="">{item.label}</span>
             </a>
           </li>
         {/if}
       {/each}
     </ul>
 
-    <div class="border-t border-gray-700 pt-4">
+    <!-- Footer: User info y logout -->
+    <div class="border-t border-gray-100 dark:border-gray-700 pt-4 mt-4">
       {#if user}
-        <div class="mt-2 text-xs text-gray-400">Usuario: {nombre}</div>
-        <div class="text-xs text-gray-400">Rol: {roles?.join(", ")}</div>
+        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Usuario: {nombre}
+        </div>
+        <div class="text-xs text-gray-500 dark:text-gray-400">
+          Rol: {roles?.join(", ")}
+        </div>
       {/if}
-
-      <div class="mt-2 text-xs text-gray-400"></div>
 
       <button
         on:click={logout}
-        class="mt-4 w-full rounded bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600"
+        class="mt-4 w-full rounded bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-600 transition"
       >
         🚪 Cerrar sesión
       </button>
