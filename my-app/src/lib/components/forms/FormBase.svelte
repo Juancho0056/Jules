@@ -5,7 +5,7 @@
   import DateInput from "../inputs/DateInput.svelte";
   import CheckInput from "../inputs/CheckInput.svelte";
   import DependentSelect from "../inputs/DependentSelect.svelte";
-  // TextAreaInput would be a new simple component or handled directly
+  import NumberInput from "../inputs/NumberInput.svelte";
 
   export let fields: Array<any> = [];
   export let initialData: Record<string, any> = {};
@@ -26,7 +26,11 @@
       // If not already in initialData, use the field's default value or a sensible default
       if (newFormData[field.name] === undefined) {
         newFormData[field.name] =
-          field.value !== undefined ? field.value : getDefaultValue(field.type);
+          field.value !== undefined
+            ? field.value
+            : field.default !== undefined
+              ? field.default
+              : getDefaultValue(field.type);
       }
       newFormErrors[field.name] = "";
     });
@@ -44,6 +48,8 @@
         return "";
       case "checkbox":
         return false;
+      case "number":
+        return null;
       default:
         return undefined;
     }
@@ -55,7 +61,7 @@
   function handleInputChange(fieldName: string, newValue: any) {
     formData[fieldName] = newValue;
     formData = { ...formData }; // Trigger reactivity for dependent selects
-
+    console.log(`Field changed: ${fieldName} = ${newValue}`);
     // Clear previous debounce timer
     clearTimeout(debounceTimer);
 
@@ -205,6 +211,26 @@
           disabled={field.disabled}
           required={field.required}
           errorMessage={formErrors[field.name]}
+        />
+      {:else if field.type === "number"}
+        <NumberInput
+          id={field.name}
+          name={field.name}
+          label={field.label}
+          bind:value={formData[field.name]}
+          on:input={(e) => {
+            console.log("Number input change:", e);
+            handleInputChange(field.name, e.detail.value);
+          }}
+          placeholder={field.placeholder}
+          disabled={field.disabled}
+          required={field.required}
+          errorMessage={formErrors[field.name]}
+          min={field.min}
+          max={field.max}
+          step={field.step}
+          allowDecimals={field.allowDecimals ?? true}
+          stepButtons={field.stepButtons ?? false}
         />
       {:else if field.type === "textarea"}
         <div class="form-control">

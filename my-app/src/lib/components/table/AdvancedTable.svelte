@@ -1,7 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount } from "svelte";
   import { writable, derived } from "svelte/store";
-  import UnitListItem from "$lib/components/unitOfMeasure/UnitListItem.svelte";
   import DataCard from "$lib/components/common/DataCard.svelte";
   // Props
   export let data: Record<string, any>[] = [];

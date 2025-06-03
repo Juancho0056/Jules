@@ -68,6 +68,14 @@
   let formFields = [
     {
       type: "text",
+      name: "codigo",
+      label: "Código de Unidad",
+      required: true,
+      validation: (value: string) =>
+        !value?.trim() ? "El código es requerido." : "",
+    },
+    {
+      type: "text",
       name: "nombre",
       label: "Nombre de Unidad",
       required: true,
@@ -87,6 +95,11 @@
       name: "orden",
       label: "Orden",
       required: true,
+      min: 0,
+      step: 1,
+      allowDecimals: false,
+      stepButtons: true, // ← activa botones + y -
+      default: 1,
       validation: (value: any) =>
         value === undefined || value === null || value === ""
           ? "El orden es requerido."
@@ -215,7 +228,7 @@
   />
 
   {#if showForm}
-    <div class="modal-overlay" on:click|self={handleCancelForm}>
+    <div class="modal-overlay">
       <div class="modal-content">
         <header class="modal-header">
           <h2>{editingUnidad ? "Editar" : "Crear"} Unidad de Medida</h2>
