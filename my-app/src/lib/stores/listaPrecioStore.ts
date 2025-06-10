@@ -1,6 +1,8 @@
 // my-app/src/lib/stores/listaPrecioStore.ts
 import { writable, get } from 'svelte/store';
-import { db, type ListaPrecioDbo, type ListaPrecioProductoDbo } from '../services/dbService';
+import { db } from '../services/dbService';
+import type { ListaPrecioDbo, ListaPrecioProductoDbo } from '../types/listaPrecio';
+
 import { apiService } from '../services/apiService';
 import { syncService } from '../services/syncService';
 import { offlineStore } from './offlineStore';
@@ -54,8 +56,7 @@ function createListaPrecioStore() {
 
   const dexieListasPrecio = dexieStore(() => db.listasPrecio.orderBy('nombre').toArray());
   const unsubscribeFromLiveQuery = dexieListasPrecio.subscribe(
-    (data) => update((state) => ({ ...state, listasPrecio: data, isLoading: false, error: null })),
-    (err) => update((state) => ({ ...state, error: err, isLoading: false }))
+    (data) => update((state) => ({ ...state, listasPrecio: data, isLoading: false, error: null }))
   );
 
   const fetchFromApi = async () => {

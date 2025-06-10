@@ -1,15 +1,17 @@
 <!-- my-app/src/routes/campanas/+page.svelte -->
 <script lang="ts">
-  import { onMount, tick, get as svelteGet } from 'svelte';
-  import { campanaStore, type CampanaDbo, type CampanaProductoDescuentoDbo, type SelectedCampanaDetail, type TipoDescuento } from '$lib/stores/campanaStore';
+  import { onMount, tick } from 'svelte';
+  import { get as svelteGet } from 'svelte/store'; // Utility to get store value in Svelte
+  import { campanaStore, type SelectedCampanaDetail } from '$lib/stores/campanaStore';
   // Placeholder for product store - assume product IDs are entered manually for now
   // import { productStore, type ProductDbo } from '$lib/stores/productStore';
+  import type { CampanaDbo, CampanaProductoDescuentoDbo, TipoDescuento } from '$lib/types/campana';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
-  import type { FormField } from '$lib/components/forms/FormBase.svelte'; // Assuming FormBase exports this type
   import { currentUserPermissions, hasPermission } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
+ 
 
   const PERMISSIONS = {
     CREATE_CAMPANA: 'Permissions.Campanas.Create',
@@ -83,14 +85,14 @@
   ];
 
   // --- Form Field Definitions ---
-  const headerFormFields: FormField[] = [
+  const headerFormFields = [
     { type: 'text', name: 'nombre', label: 'Nombre Campaña', required: true },
     { type: 'textarea', name: 'descripcion', label: 'Descripción' },
     { type: 'date', name: 'fechaInicio', label: 'Fecha Inicio', required: true },
     { type: 'date', name: 'fechaFin', label: 'Fecha Fin' },
   ];
 
-  const productFormFields: FormField[] = [
+  const productFormFields = [
     { type: 'number', name: 'productoId', label: 'ID Producto', required: true, min: 1 },
     {
       type: 'select', name: 'tipoDescuento', label: 'Tipo de Descuento', required: true,
@@ -264,7 +266,6 @@
     userPermissions={$currentUserPermissions}
     on:viewEdit={handleViewEditCampaign}
     itemsPerPage={10}
-    emptyMessage="No hay campañas para mostrar."
   />
 
   <!-- Main Modal for Campaign Header & Product/Discount List -->
@@ -277,12 +278,10 @@
         </header>
 
         <FormBase
-          key={mainFormKey}
           fields={headerFormFields}
           initialData={initialHeaderFormData}
           on:save={handleSaveCampaignHeader}
           on:cancel={() => showMainModal = false}
-          submitButtonText={isEditingHeader ? 'Guardar Cambios Encabezado' : 'Guardar Encabezado'}
         />
 
         {#if isEditingHeader && selectedCampana }
@@ -297,8 +296,6 @@
               actions={productTableActions}
               userPermissions={$currentUserPermissions}
               on:editProduct={handleEditProductDiscount}
-              emptyMessage="No hay productos/descuentos en esta campaña aún."
-              compact={true}
             />
           </section>
         {/if}
@@ -315,12 +312,10 @@
           <button class="btn-close" on:click={() => showProductDiscountForm = false}>&times;</button>
         </header>
         <FormBase
-          key={productFormKey}
           fields={productFormFields}
           initialData={initialProductFormData}
           on:save={handleSaveProductDiscount}
           on:cancel={() => showProductDiscountForm = false}
-          submitButtonText="Guardar Descuento"
         />
       </div>
     </div>

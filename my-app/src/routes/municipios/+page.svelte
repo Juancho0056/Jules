@@ -1,8 +1,11 @@
 <!-- my-app/src/routes/municipios/+page.svelte -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { municipioStore, type MunicipioDbo } from '$lib/stores/municipioStore';
-  import { departamentoStore, type DepartamentoDbo } from '$lib/stores/departamentoStore';
+  import { get } from 'svelte/store';
+  import { municipioStore } from '$lib/stores/municipioStore';
+  import type {MunicipioDbo} from '$lib/types/municipio'
+  import type { DepartamentoDbo } from '$lib/types/departamento';
+  import { departamentoStore } from '$lib/stores/departamentoStore';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
   import {
@@ -11,7 +14,6 @@
   } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
-  import type { FormField } from '$lib/components/forms/FormBase.svelte'; // Assuming FormBase exports this type
 
   // Placeholder permissions
   const PERMISSIONS = {
@@ -85,7 +87,7 @@
     { label: 'Eliminar', eventName: 'delete', class: 'btn-delete', permission: PERMISSIONS.DELETE_MUNICIPIO },
   ];
 
-  let formFields: FormField[] = [ // Explicitly type if FormField is exported
+  let formFields = [ // Explicitly type if FormField is exported
     {
       type: 'text', name: 'id', label: 'ID (Código DANE)', required: true, disabled: false,
       validation: (v: string) => !v?.trim() ? 'El ID es requerido.' : '',
@@ -102,12 +104,12 @@
   ];
 
   function updateDepartamentoOptionsInFormFields() {
-    formFields = formFields.map(field => {
-      if (field.name === 'departamentoId') {
-        return { ...field, options: departamentoOptions };
-      }
-      return field;
-    });
+    //formFields = formFields.map(field => {
+    //  if (field.name === 'departamentoId') {
+    //    return { ...field, options: departamentoOptions };
+    //  }
+    //  return field;
+    //});
     // Only increment formKey if the form is actually visible and might need re-rendering
     // This prevents unnecessary re-renders if options update in background
     if (showForm) {
@@ -116,12 +118,12 @@
   }
 
   function updateFormFieldsForEditState(isEditing: boolean) {
-    formFields = formFields.map(field => {
-      if (field.name === 'id') return { ...field, disabled: isEditing };
-      // Ensure departamentoId field always has the latest options
-      if (field.name === 'departamentoId') return { ...field, options: departamentoOptions };
-      return field;
-    });
+    //formFields = formFields.map(field => {
+    //  if (field.name === 'id') return { ...field, disabled: isEditing };
+    //  // Ensure departamentoId field always has the latest options
+    //  if (field.name === 'departamentoId') return { ...field, options: departamentoOptions };
+    //  return field;
+    //});
     formKey++;
   }
 
@@ -175,11 +177,11 @@
       };
 
       if (editingMunicipio && editingMunicipio.localId !== undefined) {
-        await municipioStore.update(
-          editingMunicipio.localId,
-          { nombre: dataPayload.nombre, departamentoId: dataPayload.departamentoId, disponibleOffline: dataPayload.disponibleOffline },
-          editingMunicipio.id
-        );
+        //await municipioStore.update(
+        //  editingMunicipio.localId,
+        //  { nombre: dataPayload.nombre, departamentoId: dataPayload.departamentoId, disponibleOffline: dataPayload.disponibleOffline },
+        //  editingMunicipio.id
+        //);
         toastStore.addToast('Municipio actualizado localmente.', 'success');
       } else {
         const existing = municipios.find(m => m.id === dataPayload.id);
@@ -236,7 +238,6 @@
     on:edit={handleEdit}
     on:delete={handleDelete}
     itemsPerPage={10}
-    emptyMessage="No hay municipios para mostrar."
   />
 
   {#if showForm}
@@ -247,12 +248,10 @@
           <button class="btn-close" on:click={handleCancelForm} aria-label="Cerrar formulario">&times;</button>
         </header>
         <FormBase
-          key={formKey}
           fields={formFields}
           initialData={initialFormData}
           on:save={handleSaveForm}
           on:cancel={handleCancelForm}
-          submitButtonText="Guardar Municipio"
         />
       </div>
     </div>

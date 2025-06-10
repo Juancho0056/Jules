@@ -1,15 +1,16 @@
 <!-- my-app/src/routes/listasprecio/+page.svelte -->
 <script lang="ts">
-  import { onMount, tick, get as svelteGet } from 'svelte';
-  import { listaPrecioStore, type ListaPrecioDbo, type ListaPrecioProductoDbo, type SelectedListaPrecioDetail } from '$lib/stores/listaPrecioStore';
+  import {db} from '$lib/services/dbService';
+  import { listaPrecioStore, type SelectedListaPrecioDetail } from '$lib/stores/listaPrecioStore';
+  import type {ListaPrecioDbo, ListaPrecioProductoDbo} from '$lib/types/listaPrecio'
   // Placeholder for product store
   // import { productStore, type ProductDbo } from '$lib/stores/productStore';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
-  import type { FormField } from '$lib/components/forms/FormBase.svelte';
   import { currentUserPermissions, hasPermission } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
+  import { max, type from } from 'rxjs';
 
   const PERMISSIONS = {
     CREATE_LISTA_PRECIO: 'Permissions.ListasPrecio.Create',
@@ -82,7 +83,7 @@
     { label: 'Remover Producto', eventName: 'removeProductPrice', class: 'btn-delete', permission: PERMISSIONS.MANAGE_PRODUCTOS_LISTA_PRECIO },
   ];
 
-  let headerFormFields: FormField[] = [
+  let headerFormFields= [
     { type: 'text', name: 'nombre', label: 'Nombre Lista de Precio', required: true, disabled: false },
     { type: 'textarea', name: 'descripcion', label: 'Descripción', disabled: false },
     { type: 'date', name: 'fechaInicio', label: 'Fecha Inicio Vigencia', required: true, disabled: false },
@@ -90,9 +91,9 @@
     { type: 'checkbox', name: 'disponibleOffline', label: 'Disponible Offline', default: true, disabled: false },
   ];
 
-  const productPriceFormFields: FormField[] = [
-    { type: 'number', name: 'productoId', label: 'ID Producto', required: true, min: 1, disabled: false },
-    { type: 'number', name: 'precio', label: 'Precio', required: true, min: 0, step: 0.01 },
+  let productPriceFormFields = [
+    { type: 'number', name: 'productoId', label: 'ID Producto', required: true, min: 1, disabled: false, step: 1, max: 9999999999, default: 0 },
+    { type: 'number', name: 'precio', label: 'Precio', required: true, min: 0, step: 0.01, max: 9999999999, default: 0 },
     { type: 'date', name: 'fechaInicioPrecio', label: 'Fecha Inicio Precio', required: true },
   ];
 
@@ -116,7 +117,7 @@
   function handleViewEditListaPrecio(event: CustomEvent<ListaPrecioDbo>) {
     const listaHeader = event.detail;
     const idToLoad = listaHeader.id ?? listaHeader.offlineUuid;
-    if (idToLoad !== undefined) { // Ensure idToLoad is not null or undefined
+    if (idToLoad !== undefined && idToLoad !== null) { // Ensure idToLoad is not null or undefined
       listaPrecioStore.getListaPrecioWithDetails(idToLoad);
       // isEditingHeader and form fields are updated reactively by selectedListaPrecioForDetails subscription
       showMainModal = true;
@@ -188,7 +189,7 @@
     initialProductFormData = { productoId: '', precio: 0, fechaInicioPrecio: new Date().toISOString().split('T')[0] };
 
     // Disable productoId if editing
-    productPriceFormFields = productPriceFormFields.map(f => f.name === 'productoId' ? {...f, disabled: false} : f);
+    //productPriceFormFields = productPriceFormFields.map(f => f.name === 'productoId' ? {...f, disabled: false} : f);
     productFormKey++;
     showProductPriceForm = true;
   }
@@ -200,7 +201,7 @@
       fechaInicioPrecio: editingProductoPrecio.fechaInicioPrecio.split('T')[0],
     };
     // Disable productoId if editing
-    productPriceFormFields = productPriceFormFields.map(f => f.name === 'productoId' ? {...f, disabled: true} : f);
+    //productPriceFormFields = productPriceFormFields.map(f => f.name === 'productoId' ? {...f, disabled: true} : f);
     productFormKey++;
     showProductPriceForm = true;
   }
@@ -284,7 +285,7 @@
     userPermissions={$currentUserPermissions}
     on:viewEdit={handleViewEditListaPrecio}
     itemsPerPage={10}
-    emptyMessage="No hay listas de precio para mostrar."
+    
   />
 
   {#if showMainModal}
@@ -296,12 +297,10 @@
         </header>
 
         <FormBase
-          key={mainFormKey}
           fields={headerFormFields}
           initialData={initialHeaderFormData}
           on:save={handleSaveListaPrecioHeader}
           on:cancel={() => showMainModal = false}
-          submitButtonText={isEditingHeader ? 'Guardar Cambios Locales' : 'Guardar y Continuar'}
         />
 
         {#if isEditingHeader && selectedLista && (selectedLista.id || selectedLista.localId)}
@@ -309,7 +308,7 @@
             <h3>Productos y Precios en esta Lista</h3>
             {#if hasPermission(PERMISSIONS.MANAGE_PRODUCTOS_LISTA_PRECIO)}
               {#if selectedLista.id /* Only allow adding products if header is synced and has server ID */}
-                <button class="btn btn-secondary" on:click={handleOpenAddProductForm}>Agregar Producto/Precio</button>
+                <button class="btn btn-secondary" on:click={() =>{}}>Agregar Producto/Precio</button>
               {:else}
                 <p class="text-sm text-gray-500 italic py-2">La lista de precios debe sincronizarse primero para obtener un ID de servidor antes de agregar productos.</p>
               {/if}
@@ -321,8 +320,6 @@
               userPermissions={$currentUserPermissions}
               on:editProductPrice={handleEditProductoPrecio}
               on:removeProductPrice={handleRemoveProductoPrice}
-              emptyMessage="No hay productos/precios en esta lista aún."
-              compact={true}
             />
           </section>
         {/if}
@@ -338,12 +335,10 @@
           <button class="btn-close" on:click={() => showProductPriceForm = false}>&times;</button>
         </header>
         <FormBase
-          key={productFormKey}
           fields={productPriceFormFields}
           initialData={initialProductFormData}
           on:save={handleSaveProductoPrecio}
           on:cancel={() => showProductPriceForm = false}
-          submitButtonText="Guardar Precio"
         />
       </div>
     </div>

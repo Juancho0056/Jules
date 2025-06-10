@@ -1,7 +1,8 @@
 <!-- my-app/src/routes/clientes/+page.svelte -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { clienteStore, type ClienteDbo } from '$lib/stores/clienteStore';
+  import { clienteStore } from '$lib/stores/clienteStore';
+  import type {ClienteDbo} from '$lib/types/cliente';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
   import {
@@ -319,12 +320,10 @@
             aria-label="Cerrar formulario">&times;</button>
         </header>
         <FormBase
-          key={formKey}
           fields={formFields}
           initialData={initialFormData}
           on:save={handleSaveForm}
           on:cancel={handleCancelForm}
-          submitButtonText="Guardar Cliente"
         />
       </div>
     </div>

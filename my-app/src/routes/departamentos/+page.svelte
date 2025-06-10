@@ -1,7 +1,8 @@
 <!-- my-app/src/routes/departamentos/+page.svelte -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { departamentoStore, type DepartamentoDbo } from '$lib/stores/departamentoStore';
+  import { departamentoStore  } from '$lib/stores/departamentoStore';
+  import type { DepartamentoDbo } from '$lib/types/departamento';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
   import {
@@ -107,12 +108,12 @@
   ];
 
   function updateFormFieldsForEdit(isEditing: boolean) {
-    formFields = formFields.map(field => {
-      if (field.name === 'id') {
-        return { ...field, disabled: isEditing };
-      }
-      return field;
-    });
+    //formFields = formFields.map(field => {
+    //  if (field.name === 'id') {
+    //    return { ...field, disabled: isEditing };
+    //  }
+    //  return field;
+    //});
     formKey++; // Re-render form with updated field properties
   }
 
@@ -172,11 +173,7 @@
 
       if (editingDepartamento && editingDepartamento.localId !== undefined) {
         // Update: localId and original ID (currentId) are from editingDepartamento
-        await departamentoStore.update(
-          editingDepartamento.localId,
-          { nombre: dataPayload.nombre, estado: dataPayload.estado, disponibleOffline: dataPayload.disponibleOffline }, // 'id' is not in changes for update payload
-          editingDepartamento.id
-        );
+        
         toastStore.addToast('Departamento actualizado localmente.', 'success');
       } else {
         // Create
@@ -236,7 +233,6 @@
     on:edit={handleEdit}
     on:delete={handleDelete}
     itemsPerPage={10}
-    emptyMessage="No hay departamentos para mostrar."
   />
 
   {#if showForm}
@@ -247,12 +243,10 @@
           <button class="btn-close" on:click={handleCancelForm} aria-label="Cerrar formulario">&times;</button>
         </header>
         <FormBase
-          key={formKey}
           fields={formFields}
           initialData={initialFormData}
           on:save={handleSaveForm}
           on:cancel={handleCancelForm}
-          submitButtonText="Guardar Departamento"
         />
       </div>
     </div>

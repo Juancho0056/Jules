@@ -1,6 +1,7 @@
 // my-app/src/lib/stores/campanaStore.ts
 import { writable, get } from 'svelte/store';
-import { db, type CampanaDbo, type CampanaProductoDescuentoDbo, type TipoDescuento } from '../services/dbService';
+import { db } from '../services/dbService';
+import type { CampanaDbo, CampanaProductoDescuentoDbo, TipoDescuento } from '$lib/types/campana';
 import { apiService } from '../services/apiService';
 import { syncService } from '../services/syncService';
 import { offlineStore } from './offlineStore';
@@ -54,8 +55,7 @@ function createCampanaStore() {
 
   const dexieCampanas = dexieStore(() => db.campanas.orderBy('nombre').toArray());
   const unsubscribeFromLiveQuery = dexieCampanas.subscribe(
-    (data) => update((state) => ({ ...state, campanas: data, isLoading: false, error: null })),
-    (err) => update((state) => ({ ...state, error: err, isLoading: false }))
+    (data) => update((state) => ({ ...state, campanas: data, isLoading: false, error: null }))
   );
 
   const fetchFromApi = async () => {
