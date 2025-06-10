@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
-import type { ClienteDbo } from '../types/cliente'; // Import ClienteDbo
+import type { ClienteDbo } from '../types/cliente';
+import type { DepartamentoDbo } from '../types/departamento'; // Import DepartamentoDbo
 
 export interface UnitOfMeasureDbo {
   localId?: number;
@@ -42,8 +43,9 @@ export class MyDexieDatabase extends Dexie {
   unitsOfMeasure!: Table<UnitOfMeasureDbo, number>;
   pendingOperations!: Table<PendingOperationDbo, number>;
   appConfig!: Table<AppConfigDbo, string>;
-  syncIndex!: Table<SyncIndexDbo, string>; // ← Nueva tabla SyncIndex
-  clientes!: Table<ClienteDbo, number>; // Declare clientes table
+  syncIndex!: Table<SyncIndexDbo, string>;
+  clientes!: Table<ClienteDbo, number>;
+  departamentos!: Table<DepartamentoDbo, number>; // Declare departamentos table
 
   constructor() {
     super('posOfflineFirstDb');
@@ -59,7 +61,7 @@ export class MyDexieDatabase extends Dexie {
         sincronizado,
         disponibleOffline,
         fechaModificacion,
-        ultimaConsulta`, // ← nuevos campos clave
+        ultimaConsulta`,
       pendingOperations: `
         ++opId,
         entityName,
@@ -68,10 +70,9 @@ export class MyDexieDatabase extends Dexie {
         entityKey,
         status`,
       appConfig: '&key',
-      syncIndex: '&tabla', // ← para registro de última sincronización
+      syncIndex: '&tabla',
     });
 
-    // New version for clientes table
     this.version(3).stores({
       unitsOfMeasure: `
         ++localId,
@@ -105,7 +106,53 @@ export class MyDexieDatabase extends Dexie {
         sincronizado,
         disponibleOffline,
         fechaModificacion,
-        ultimaConsulta` // Schema for clientes
+        ultimaConsulta`
+    });
+
+    // New version for departamentos table
+    this.version(4).stores({
+      unitsOfMeasure: `
+        ++localId,
+        &codigo,
+        id,
+        nombre,
+        abreviatura,
+        orden,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      pendingOperations: `
+        ++opId,
+        entityName,
+        operationType,
+        timestamp,
+        entityKey,
+        status`,
+      appConfig: '&key',
+      syncIndex: '&tabla',
+      clientes: `
+        ++localId,
+        &numeroDocumento,
+        id,
+        razonSocial,
+        primerNombre,
+        primerApellido,
+        email,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      departamentos: `
+        ++localId,
+        &id,
+        nombre,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta` // Schema for departamentos
     });
   }
 }
