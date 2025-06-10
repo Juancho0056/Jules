@@ -1,15 +1,25 @@
 import { offlineStore } from '../stores/offlineStore';
 import { apiService } from './apiService';
-import { db, type PendingOperationDbo, type UnitOfMeasureDbo, type ClienteDbo, type DepartamentoDbo, type MunicipioDbo } from './dbService'; // Added MunicipioDbo
+import {
+    db,
+    type PendingOperationDbo,
+    type UnitOfMeasureDbo,
+    type ClienteDbo,
+    type DepartamentoDbo,
+    type MunicipioDbo,
+    type CampanaDbo, // Import CampanaDbo
+    type CampanaProductoDescuentoDbo // Import CampanaProductoDescuentoDbo
+} from './dbService';
 import { get } from 'svelte/store';
 import { toastStore } from '../stores/toastStore';
 import type { CreateUnidadMedidaCommand, UpdateUnidadMedidaCommand, UnidadMedida } from '$lib/types/unidadMedida';
+import type { TipoDescuento } from '$lib/types/campana';
 
-// TODO: Define this properly based on actual API response structure for Clientes
+
+// API Response Interfaces (basic definitions)
 interface ClienteApiResponse {
-  id: number; // Server ID
+  id: number;
   fechaHoraModificacion: string;
-  // Potentially all fields of a client
   [key: string]: any;
 }
 
@@ -29,12 +39,33 @@ interface MunicipioApiResponse {
   fechaHoraModificacion?: string;
 }
 
+interface CampanaDetailApiResponse { // For POST /api/campanas-descuento and PUT /api/campanas-descuento/{id}
+    id: number;
+    nombre: string;
+    descripcion?: string | null;
+    fechaInicio: string;
+    fechaFin?: string | null;
+    fechaHoraModificacion: string; // Assuming server returns this
+    // If the API returns the full list of products upon create/update header, define structure here
+    // productos?: Array<{ productoId: number; tipoDescuento: TipoDescuento; valorDescuento: number; /* ... */ }>;
+    [key: string]: any;
+}
+
+interface CampanaProductoApiResponse { // For POST/PUT on CampanaProductos
+    // Define based on what the API returns for these operations
+    // Often, it might just be a success status or the updated/created object
+    campanaId: number;
+    productoId: number;
+    fechaHoraModificacion: string; // Assuming server returns this
+    [key: string]: any;
+}
+
+
 const MAX_RETRY_ATTEMPTS = 3;
 
-// Añadir operación a la cola
 const addToQueue = async (
   entityName: string,
-  operationType: 'create' | 'update' | 'delete',
+  operationType: 'create' | 'update' | 'delete' | 'createFull' | 'updateHeader' | 'add' | 'remove', // Extended operation types
   payload: any,
   entityKey?: string | null
 ) => {
@@ -56,7 +87,6 @@ const addToQueue = async (
   }
 };
 
-// Procesamiento robusto con retry automático
 const processQueue = async () => {
   if (get(offlineStore).isOffline) return;
 
@@ -79,9 +109,11 @@ const processQueue = async () => {
 
       let result;
       let success = false;
+      const now = new Date();
 
       switch (op.entityName) {
         case 'UnidadMedidas':
+          // ... existing logic for UnidadMedidas ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<UnidadMedida>(`/UnidadMedidas`, op.payload);
@@ -116,6 +148,7 @@ const processQueue = async () => {
           break;
 
         case 'Clientes':
+          // ... existing logic for Clientes ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<ClienteApiResponse>(`/api/clientes`, op.payload);
@@ -159,6 +192,7 @@ const processQueue = async () => {
           break;
 
         case 'Departamentos':
+          // ... existing logic for Departamentos ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<DepartamentoApiResponse>('/api/Departamentos', op.payload);
@@ -193,30 +227,25 @@ const processQueue = async () => {
           }
           break;
 
-        case 'Municipios': // New logic for Municipios
+        case 'Municipios':
+          // ... existing logic for Municipios ...
           switch (op.operationType) {
             case 'create':
-              // op.payload is { id, nombre, departamentoId, disponibleOffline }
-              // op.entityKey is municipio.id
               result = await apiService.post<MunicipioApiResponse>('/api/Municipios', op.payload);
               if (result.isSuccess && result.value) {
                 await db.municipios.where('id').equals(op.entityKey!).modify({
                   sincronizado: true,
-                  fechaModificacion: new Date(result.value.fechaHoraModificacion!) // Add null check if needed
-                  // Other fields like nombre, departamentoId, disponibleOffline are set by client
-                  // API might not return them all, or they might not need updating if client is source of truth for them post-creation
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion!)
                 });
                 success = true;
               }
               break;
             case 'update':
-              // op.payload is { nombre, departamentoId, disponibleOffline }
-              // op.entityKey is municipio.id
               result = await apiService.put<MunicipioApiResponse>(`/api/Municipios/${op.entityKey}`, op.payload);
               if (result.isSuccess && result.value) {
                 await db.municipios.where('id').equals(op.entityKey!).modify({
                   sincronizado: true,
-                  fechaModificacion: new Date(result.value.fechaHoraModificacion!), // Add null check if needed
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion!),
                   nombre: result.value.nombre,
                   departamentoId: result.value.departamentoId,
                   disponibleOffline: result.value.disponibleOffline
@@ -225,15 +254,96 @@ const processQueue = async () => {
               }
               break;
             case 'delete':
-              // op.entityKey is municipio.id
               result = await apiService.delete(`/api/Municipios/${op.entityKey}`);
               if (result.isSuccess) {
-                // Local deletion is handled by municipioStore.
                 success = true;
               }
               break;
           }
-          break; // End of case 'Municipios'
+          break;
+
+        case 'Campanas':
+          switch (op.operationType) {
+            case 'createFull': // op.payload is CrearCampanaConProductosCommand
+                               // op.entityKey is the offlineUuid
+              result = await apiService.post<CampanaDetailApiResponse>('/api/campanas-descuento', op.payload);
+              if (result.isSuccess && result.value) {
+                const campanaServerId = result.value.id;
+                const fechaModificacionServer = new Date(result.value.fechaHoraModificacion);
+
+                const localCampana = await db.campanas.where('offlineUuid').equals(op.entityKey!).first();
+                if (localCampana && localCampana.localId) {
+                  await db.campanas.update(localCampana.localId, {
+                    id: campanaServerId,
+                    sincronizado: true,
+                    fechaModificacion: fechaModificacionServer,
+                    offlineUuid: null // Clear UUID
+                  });
+                  // Update associated products with the new campanaId (server ID)
+                  await db.campanaProductoDescuentos
+                    .where('campanaLocalId').equals(localCampana.localId)
+                    .modify({
+                      campanaId: campanaServerId,
+                      sincronizado: true, // Assuming products are also synced by this parent op
+                      fechaModificacion: fechaModificacionServer // Or use product-specific mod date if API returns it
+                    });
+                }
+                success = true;
+              }
+              break;
+            case 'updateHeader': // op.payload is ActualizarCampanaCommand (includes id)
+                                 // op.entityKey is campanaServerId (string)
+              result = await apiService.put<CampanaDetailApiResponse>(`/api/campanas-descuento/${op.entityKey}`, op.payload);
+              if (result.isSuccess && result.value) {
+                await db.campanas.where('id').equals(parseInt(op.entityKey!)).modify({
+                  sincronizado: true,
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion),
+                  // Update other fields if API returns them and they should be synced back
+                  nombre: result.value.nombre,
+                  descripcion: result.value.descripcion,
+                  fechaInicio: result.value.fechaInicio,
+                  fechaFin: result.value.fechaFin,
+                });
+                success = true;
+              }
+              break;
+          }
+          break; // End of case 'Campanas'
+
+        case 'CampanaProductos':
+          switch (op.operationType) {
+            case 'add': // op.payload is AgregarProductoCampanaCommand
+                        // op.entityKey is campanaId_productoId
+              result = await apiService.post<CampanaProductoApiResponse>('/api/campanas-descuento/agregar-producto', op.payload);
+              if (result.isSuccess && result.value) {
+                await db.campanaProductoDescuentos
+                  .where('[campanaId+productoId]').equals([op.payload.campanaId, op.payload.productoId])
+                  .modify({
+                    sincronizado: true,
+                    fechaModificacion: new Date(result.value.fechaHoraModificacion)
+                  });
+                success = true;
+              }
+              break;
+            case 'update': // op.payload is ActualizarDescuentoCampanaCommand
+                           // op.entityKey is campanaId_productoId
+              result = await apiService.put<CampanaProductoApiResponse>('/api/campanas-descuento/actualizar-descuento', op.payload);
+              if (result.isSuccess && result.value) {
+                 await db.campanaProductoDescuentos
+                  .where('[campanaId+productoId]').equals([op.payload.campanaId, op.payload.productoId])
+                  .modify({
+                    sincronizado: true,
+                    fechaModificacion: new Date(result.value.fechaHoraModificacion),
+                    // Sync back any changes from API response if necessary
+                    tipoDescuento: result.value.tipoDescuento, // Example
+                    valorDescuento: result.value.valorDescuento // Example
+                  });
+                success = true;
+              }
+              break;
+            // TODO: Add 'remove' (delete) operation for CampanaProductos if API endpoint exists
+          }
+          break; // End of case 'CampanaProductos'
 
         default:
           console.warn(`Unknown entity type in sync queue: ${op.entityName}`);
@@ -260,7 +370,6 @@ const processQueue = async () => {
   }
 };
 
-// Estado de la cola
 const getQueueStatus = async () => {
   const pending = await db.pendingOperations.where('status').equals('pending').count();
   const failed = await db.pendingOperations.where('status').equals('failed').count();

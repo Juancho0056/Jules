@@ -1,7 +1,8 @@
 import Dexie, { type Table } from 'dexie';
 import type { ClienteDbo } from '../types/cliente';
 import type { DepartamentoDbo } from '../types/departamento';
-import type { MunicipioDbo } from '../types/municipio'; // Import MunicipioDbo
+import type { MunicipioDbo } from '../types/municipio';
+import type { CampanaDbo, CampanaProductoDescuentoDbo } from '../types/campana'; // Import Campana types
 
 export interface UnitOfMeasureDbo {
   localId?: number;
@@ -12,9 +13,9 @@ export interface UnitOfMeasureDbo {
   orden: number;
   estado: boolean;
   sincronizado: boolean;
-  disponibleOffline: boolean; // ← Nuevo flag desde backend
+  disponibleOffline: boolean;
   fechaModificacion: Date;
-  ultimaConsulta: Date;       // ← Para limpieza automática
+  ultimaConsulta: Date;
   offlineId?: string | null;
 }
 
@@ -36,8 +37,8 @@ export interface AppConfigDbo {
 }
 
 export interface SyncIndexDbo {
-  tabla: string;          // ← nombre de la tabla sincronizada (ej: 'unitsOfMeasure')
-  lastSyncedAt: Date;     // ← timestamp última sincronización exitosa
+  tabla: string;
+  lastSyncedAt: Date;
 }
 
 export class MyDexieDatabase extends Dexie {
@@ -47,7 +48,9 @@ export class MyDexieDatabase extends Dexie {
   syncIndex!: Table<SyncIndexDbo, string>;
   clientes!: Table<ClienteDbo, number>;
   departamentos!: Table<DepartamentoDbo, number>;
-  municipios!: Table<MunicipioDbo, number>; // Declare municipios table
+  municipios!: Table<MunicipioDbo, number>;
+  campanas!: Table<CampanaDbo, number>;
+  campanaProductoDescuentos!: Table<CampanaProductoDescuentoDbo, number>;
 
   constructor() {
     super('posOfflineFirstDb');
@@ -156,7 +159,6 @@ export class MyDexieDatabase extends Dexie {
         ultimaConsulta`
     });
 
-    // New version for municipios table
     this.version(5).stores({
       unitsOfMeasure: `
         ++localId,
@@ -208,7 +210,155 @@ export class MyDexieDatabase extends Dexie {
         sincronizado,
         disponibleOffline,
         fechaModificacion,
-        ultimaConsulta` // Schema for municipios, added departamentoId index
+        ultimaConsulta`
+    });
+
+    this.version(6).stores({
+      unitsOfMeasure: `
+        ++localId,
+        &codigo,
+        id,
+        nombre,
+        abreviatura,
+        orden,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      pendingOperations: `
+        ++opId,
+        entityName,
+        operationType,
+        timestamp,
+        entityKey,
+        status`,
+      appConfig: '&key',
+      syncIndex: '&tabla',
+      clientes: `
+        ++localId,
+        &numeroDocumento,
+        id,
+        razonSocial,
+        primerNombre,
+        primerApellido,
+        email,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      departamentos: `
+        ++localId,
+        &id,
+        nombre,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      municipios: `
+        ++localId,
+        &id,
+        nombre,
+        departamentoId,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      campanas: `
+        ++localId,
+        &id,
+        nombre,
+        fechaInicio,
+        fechaFin,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`, // offlineUuid was missing here in version 6
+      campanaProductoDescuentos: `
+        ++localId,
+        &[campanaId+productoId],
+        campanaId,
+        productoId,
+        campanaLocalId,
+        tipoDescuento,
+        sincronizado,
+        fechaModificacion`
+    });
+
+    // New version to add offlineUuid to campanas schema
+    this.version(7).stores({
+      unitsOfMeasure: `
+        ++localId,
+        &codigo,
+        id,
+        nombre,
+        abreviatura,
+        orden,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      pendingOperations: `
+        ++opId,
+        entityName,
+        operationType,
+        timestamp,
+        entityKey,
+        status`,
+      appConfig: '&key',
+      syncIndex: '&tabla',
+      clientes: `
+        ++localId,
+        &numeroDocumento,
+        id,
+        razonSocial,
+        primerNombre,
+        primerApellido,
+        email,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      departamentos: `
+        ++localId,
+        &id,
+        nombre,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      municipios: `
+        ++localId,
+        &id,
+        nombre,
+        departamentoId,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      campanas: `
+        ++localId,
+        &id,
+        offlineUuid, // Added offlineUuid
+        nombre,
+        fechaInicio,
+        fechaFin,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      campanaProductoDescuentos: `
+        ++localId,
+        &[campanaId+productoId],
+        campanaId,
+        productoId,
+        campanaLocalId,
+        tipoDescuento,
+        sincronizado,
+        fechaModificacion`
     });
   }
 }
