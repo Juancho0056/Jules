@@ -216,7 +216,10 @@
   {:else if error}
     <div class="error-message">Ocurrió un error: {error.message}</div>
   {/if}
-
+ {@html (() => {
+    console.log("💡 Unidades que llegan a AdvancedTable:", unidades);
+    return "";
+  })()}
   <AdvancedTable
     data={unidades}
     columns={tableColumns}

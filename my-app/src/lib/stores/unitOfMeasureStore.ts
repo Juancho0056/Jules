@@ -1,146 +1,130 @@
 import { writable, get } from 'svelte/store';
 import { db, type UnitOfMeasureDbo } from '../services/dbService';
+import { apiService } from '../services/apiService';
 import { syncService } from '../services/syncService';
 import { offlineStore } from './offlineStore';
-import type { ApiError } from '../services/apiService'; // For error type consistency
-import { liveQuery } from 'dexie'; // For reactive updates from Dexie
-import {dexieStore} from './dexieStore'; // For Dexie store utility
-
+import { liveQuery } from 'dexie';
+import { dexieStore } from './dexieStore';
 
 export interface UnitOfMeasureState {
   units: UnitOfMeasureDbo[];
   isLoading: boolean;
-  error: ApiError | Error | null; // Broader error type
+  error: Error | null;
 }
 
-const initialUnitOfMeasureState: UnitOfMeasureState = {
+const initialState: UnitOfMeasureState = {
   units: [],
-  isLoading: true, // Set to true initially, liveQuery will update it
+  isLoading: true,
   error: null,
 };
 
 function createUnitOfMeasureStore() {
-  const { subscribe, update, set } = writable<UnitOfMeasureState>(initialUnitOfMeasureState);
+  const { subscribe, update } = writable<UnitOfMeasureState>(initialState);
+
   const selectedUnitToEdit = writable<UnitOfMeasureDbo | null>(null);
-  // Use Dexie's liveQuery for reactive updates to the units list
+
+  // Dexie liveQuery para actualización reactiva
   const dexieUnits = dexieStore(() => db.unitsOfMeasure.orderBy('orden').toArray());
 
   const unsubscribeFromLiveQuery = dexieUnits.subscribe((data) => {
-    update(state => ({
-      ...state,
-      units: data,
-      isLoading: false,
-      error: null
-    }));
+    update(state => ({ ...state, units: data, isLoading: false, error: null }));
   });
-  
-  // Manual fetchAll, e.g., for an explicit refresh button, though liveQuery handles reactivity.
-  const fetchAll = async () => {
-    update(state => ({ ...state, isLoading: true, error: null }));
+
+  // Descarga selectiva desde API según estrategia unificada
+  const fetchFromApi = async () => {
+    update(s => ({ ...s, isLoading: true, error: null }));
+
     try {
-      // This method is less critical due to liveQuery, but can be used for explicit user-triggered refresh.
-      // It could potentially trigger a server sync check here or rely on syncService's own triggers.
-      // For now, it just ensures the isLoading flag is managed if called.
-      // const currentUnits = await db.unitsOfMeasure.orderBy('codigo').toArray();
-      // update(state => ({ ...state, units: currentUnits, isLoading: false }));
-      // liveQuery should handle this, so log and set loading to false.
-      console.log("fetchAll called. LiveQuery is the primary source of data. Current state is driven by Dexie updates.");
-      update(state => ({...state, isLoading: false}));
-    } catch (err) {
-      console.error('Error explicitly fetching units from Dexie for refresh:', err);
-      const errorToShow = err instanceof Error ? err : new Error(String(err));
-      update(state => ({ ...state, isLoading: false, error: errorToShow }));
+      const lastSync = await db.syncIndex.get('unitsOfMeasure');
+      const query = lastSync ? `actualizadoDesde=${lastSync.lastSyncedAt.toISOString()}` : '';
+      const response = await apiService.get<UnitOfMeasureDbo[]>(`/UnidadMedidas?offline=true&${query}`);
+
+      if (response.isSuccess && response.value) {
+        for (const unidad of response.value) {
+          const unidadDbo: UnitOfMeasureDbo = {
+            ...unidad,
+            sincronizado: true,
+            ultimaConsulta: new Date(),
+            disponibleOffline: true,
+            fechaModificacion: new Date(unidad.fechaModificacion),
+          };
+          await db.unitsOfMeasure.put(unidadDbo);
+        }
+
+        // Registrar última sincronización exitosa
+        await db.syncIndex.put({ tabla: 'unitsOfMeasure', lastSyncedAt: new Date() });
+      }
+
+      update(s => ({ ...s, isLoading: false }));
+    } catch (error) {
+      console.error('Error fetching unidades from API:', error);
+      update(s => ({ ...s, isLoading: false, error: error instanceof Error ? error : new Error(String(error)) }));
     }
   };
 
-  const add = async (unitData: Omit<UnitOfMeasureDbo, 'localId' | 'id' | 'sincronizado' | 'fechaModificacion'>) => {
-    if (!unitData.codigo || !unitData.codigo.trim()) {
-      const error = new Error("Unit 'codigo' (business key) is required and cannot be empty.");
-      console.error(error.message);
-      update(state => ({ ...state, error }));
-      // Optionally use toastStore here directly if appropriate
-      // import { toastStore } from './toastStore'; // if you decide to use it here
-      // toastStore.addToast(error.message, 'error');
-      return;
-    }
+  // Limpieza periódica automática
+  const cleanupOldUnits = async () => {
+    const monthsOld = 3; // Puedes ajustar este valor
+    const cutoffDate = new Date();
+    cutoffDate.setMonth(cutoffDate.getMonth() - monthsOld);
+
+    await db.unitsOfMeasure
+      .where('ultimaConsulta')
+      .below(cutoffDate)
+      .and(unit => unit.disponibleOffline)
+      .delete();
+  };
+
+  // CRUD operations
+  const add = async (unitData: Omit<UnitOfMeasureDbo, 'localId' | 'id' | 'sincronizado' | 'fechaModificacion' | 'ultimaConsulta' | 'disponibleOffline'>) => {
     try {
-      update(state => ({ ...state, error: null })); // Clear previous error
-      const newUnit: Omit<UnitOfMeasureDbo, 'localId'> = { // localId is auto-generated by Dexie
+      const newUnit: UnitOfMeasureDbo = {
         ...unitData,
-        id: null, // Server will assign this after sync
+        id: null,
         sincronizado: false,
+        disponibleOffline: true,
         fechaModificacion: new Date(),
+        ultimaConsulta: new Date(),
       };
-      // Add to Dexie. liveQuery will automatically update the store's 'units' list.
-      const localId = await db.unitsOfMeasure.add(newUnit as UnitOfMeasureDbo); 
-      console.log(`Unit added to Dexie with localId: ${localId}`);
 
-      // Queue for backend sync
-      // Payload for 'create' should be what API expects (e.g., no localId, no sync status)
-      const apiPayload = { nombre: newUnit.nombre, abreviatura: newUnit.abreviatura, codigo: newUnit.codigo, orden: newUnit.orden, estado: newUnit.estado };
-      await syncService.addToQueue('UnidadMedidas', 'create', apiPayload, newUnit.codigo);
-       selectedUnitToEdit.set(null); // Clear selection after successful add
+      const localId = await db.unitsOfMeasure.add(newUnit);
+
+      await syncService.addToQueue('UnidadMedidas', 'create', unitData, unitData.codigo);
+      selectedUnitToEdit.set(null);
     } catch (err) {
-      console.error('Error adding unit to Dexie or queueing:', err);
-      const errorToShow = err instanceof Error ? err : new Error(String(err));
-      update(state => ({ ...state, error: errorToShow }));
+      update(s => ({ ...s, error: err instanceof Error ? err : new Error(String(err)) }));
     }
   };
 
-  // localId is Dexie's auto-incrementing PK.
-  // currentCodigo is the business key of the item being updated (used for syncService).
   const updateUnit = async (
-    localId: number, 
-    unitChanges: Partial<Omit<UnitOfMeasureDbo, 'localId' | 'id' | 'sincronizado' | 'fechaModificacion' | 'codigo'>>, 
+    localId: number,
+    unitChanges: Partial<Omit<UnitOfMeasureDbo, 'localId' | 'id' | 'sincronizado' | 'fechaModificacion' | 'codigo' | 'disponibleOffline' | 'ultimaConsulta'>>,
     currentCodigo: string
   ) => {
     try {
-      update(state => ({ ...state, error: null }));
       await db.unitsOfMeasure.update(localId, {
-        ...unitChanges, // Apply the provided changes
-        sincronizado: false, // Mark as needing sync
+        ...unitChanges,
+        sincronizado: false,
         fechaModificacion: new Date(),
+        ultimaConsulta: new Date(),
       });
-      console.log('unit changes', unitChanges);
 
-      // Payload for 'update' should be only the changes the API expects.
-      const apiPayload = { ...unitChanges };
-      console.log('apiPayload', apiPayload);
-      await syncService.addToQueue('UnidadMedidas', 'update', apiPayload, currentCodigo);
+      await syncService.addToQueue('UnidadMedidas', 'update', unitChanges, currentCodigo);
       selectedUnitToEdit.set(null);
     } catch (err) {
-      console.error(`Error updating unit with localId ${localId} in Dexie or queueing:`, err);
-      const errorToShow = err instanceof Error ? err : new Error(String(err));
-      update(state => ({ ...state, error: errorToShow }));
+      update(s => ({ ...s, error: err instanceof Error ? err : new Error(String(err)) }));
     }
   };
 
-  // localId is Dexie's auto-incrementing PK.
-  // codigo is the business key (used for syncService).
   const remove = async (localId: number, codigo: string) => {
     try {
-      update(state => ({ ...state, error: null }));
       await db.unitsOfMeasure.delete(localId);
-      // liveQuery will automatically update the store's 'units' list.
-      console.log(`Unit with localId ${localId} deleted from Dexie.`);
-
-      // Payload for 'delete' might be empty or just the key, depending on API.
-      // syncService uses entityKey for DELETE path, so payload can be minimal or just the key.
       await syncService.addToQueue('UnidadMedidas', 'delete', { codigo }, codigo);
     } catch (err) {
-      console.error(`Error deleting unit with localId ${localId} from Dexie or queueing:`, err);
-      const errorToShow = err instanceof Error ? err : new Error(String(err));
-      update(state => ({ ...state, error: errorToShow }));
+      update(s => ({ ...s, error: err instanceof Error ? err : new Error(String(err)) }));
     }
   };
-  
-  // Cleanup liveQuery subscription. Svelte components can call this in their onDestroy lifecycle.
-  const destroy = () => {
-    if (unsubscribeFromLiveQuery && typeof unsubscribeFromLiveQuery === 'function') {
-      unsubscribeFromLiveQuery();
-      console.log("Unsubscribed from unitOfMeasureStore liveQuery.");
-    }
-  };
+
   const selectUnitToEdit = (unit: UnitOfMeasureDbo) => {
     selectedUnitToEdit.set(unit);
   };
@@ -149,35 +133,26 @@ function createUnitOfMeasureStore() {
     selectedUnitToEdit.set(null);
   };
 
-
-  // Initial isLoading state is true. liveQuery's first emission (next or error) will set it to false.
-  // No explicit fetchAll() call needed here for initial load due to liveQuery.
+  // Al reconectar, descarga incrementalmente unidades
+  offlineStore.subscribe(async (state) => {
+    if (!state.isOffline) {
+      await fetchFromApi();
+      await cleanupOldUnits();
+    }
+  });
 
   return {
     subscribe,
-    fetchAll, // Keep for explicit refresh scenarios if any
+    fetchFromApi,
+    cleanupOldUnits,
     add,
     update: updateUnit,
     remove,
-    destroy, // Expose destroy for component cleanup
     selectedUnitToEdit,
     selectUnitToEdit,
-    clearSelectedUnitToEdit
+    clearSelectedUnitToEdit,
+    destroy: unsubscribeFromLiveQuery,
   };
 }
 
 export const unitOfMeasureStore = createUnitOfMeasureStore();
-
-// Regarding the offlineStore.subscribe block:
-// The previous comment is important: "Since `unitOfMeasureStore` is now reactive
-// to Dexie changes via liveQuery, calling `fetchAll()` might be redundant if `syncService`
-// correctly updates Dexie, as liveQuery will pick up those changes."
-// If syncService.processQueue() updates records in Dexie (e.g. sets sincronizado=true, updates server 'id'),
-// liveQuery on unitsOfMeasure table will automatically reflect these changes in this store.
-// So, the `fetchAll()` call in offlineStore's subscription (if it was there for this store)
-// is likely no longer needed for data reactivity.
-// The syncService itself might show toasts for its progress.
-// This store should primarily reflect the local Dexie state.
-// The current `offlineStore` in the prompt doesn't show a `fetchAll` for this store, which is good.
-// It only calls `syncService.processQueue()`.
-

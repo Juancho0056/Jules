@@ -45,7 +45,9 @@ async function fetchApi<T>(
 
   // Add token to headers if available and not a public path
   const currentToken = get(sessionStore).token;
+  console.log(`Current token for endpoint ${endpoint}:`, currentToken);
   if (currentToken && !isPublicPath) {
+    console.log(`Adding Authorization header for endpoint ${endpoint}`);
     options.headers = {
       ...options.headers,
       'Authorization': `Bearer ${currentToken}`,

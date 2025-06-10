@@ -179,7 +179,7 @@
   </div>
   <!-- En Mobile: Renderiza cards -->
   <div class="block sm:hidden">
-    {#each $paginatedData as row (row.id)}
+    {#each $paginatedData as row (row.codigo)}
       <DataCard
         {row}
         columns={visibleColumns}

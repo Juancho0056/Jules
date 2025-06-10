@@ -1,64 +1,74 @@
 import Dexie, { type Table } from 'dexie';
 
-// Define interfaces for your table records based on Roadmap
-export interface UnitOfMeasureDbo { // Dbo for Database Object
-  localId?: number; // Auto-incremented primary key by Dexie
-  id?: string | null; // Server-assigned ID, null if created offline and not synced
-  codigo: string;    // Business key, maps to UnidadMedida.Id from server, should be unique
-  nombre: string;           // Renamed from 'name'
-  abreviatura?: string | null; // Renamed from 'symbol', optional
-  orden: number;            // New field
-  estado: boolean;          // New field
+export interface UnitOfMeasureDbo {
+  localId?: number;
+  id?: string | null;
+  codigo: string;
+  nombre: string;
+  abreviatura?: string | null;
+  orden: number;
+  estado: boolean;
   sincronizado: boolean;
+  disponibleOffline: boolean; // ← Nuevo flag desde backend
   fechaModificacion: Date;
-  offlineId?: string | null; // Optional: for client-side temporary ID if needed for UI logic before 'codigo' is set
+  ultimaConsulta: Date;       // ← Para limpieza automática
+  offlineId?: string | null;
 }
 
 export interface PendingOperationDbo {
-  opId?: number; // Auto-incremented primary key
-  entityName: string; // e.g., 'unitsOfMeasure', 'products'
+  opId?: number;
+  entityName: string;
   operationType: 'create' | 'update' | 'delete';
-  payload: any; // Data for create/update; could be specific ID for delete
+  payload: any;
   timestamp: Date;
-  entityKey?: string | null; // The 'codigo' or 'id' of the entity this operation affects
+  entityKey?: string | null;
   status: 'pending' | 'processing' | 'failed';
   lastAttempt?: Date | null;
   attempts?: number;
 }
 
 export interface AppConfigDbo {
-  key: string; // e.g., 'refreshToken', 'tokenExpiration', 'lastSync_unitsOfMeasure'
+  key: string;
   value: any;
 }
 
+export interface SyncIndexDbo {
+  tabla: string;          // ← nombre de la tabla sincronizada (ej: 'unitsOfMeasure')
+  lastSyncedAt: Date;     // ← timestamp última sincronización exitosa
+}
+
 export class MyDexieDatabase extends Dexie {
-  unitsOfMeasure!: Table<UnitOfMeasureDbo, number>; // number is the type of the primary key 'localId'
+  unitsOfMeasure!: Table<UnitOfMeasureDbo, number>;
   pendingOperations!: Table<PendingOperationDbo, number>;
-  appConfig!: Table<AppConfigDbo, string>; // string is the type of the primary key 'key'
+  appConfig!: Table<AppConfigDbo, string>;
+  syncIndex!: Table<SyncIndexDbo, string>; // ← Nueva tabla SyncIndex
 
   constructor() {
-    super('posOfflineFirstDb'); // Database name
-    this.version(1).stores({
-      unitsOfMeasure: '++localId, &codigo, id, nombre, abreviatura, orden, estado, sincronizado, fechaModificacion, offlineId',
-      // 'id' is server ID, 'codigo' is business key. 'localId' is Dexie's auto PK.
-      // Index 'id' for quick lookups once server ID is known.
-      // Index 'Nombre' for searching/sorting.
-      // Index 'Estado' for filtering.
-      // Index 'sincronizado' for finding unsynced items.
-      // 'offlineId' might be useful if 'codigo' isn't available immediately upon creation.
-      
-      pendingOperations: '++opId, entityName, operationType, timestamp, entityKey, status',
-      // Index 'status' and 'timestamp' for efficient querying of pending operations.
-
-      appConfig: '&key', // 'key' is the primary key and must be unique.
+    super('posOfflineFirstDb');
+    this.version(2).stores({
+      unitsOfMeasure: `
+        ++localId,
+        &codigo,
+        id,
+        nombre,
+        abreviatura,
+        orden,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`, // ← nuevos campos clave
+      pendingOperations: `
+        ++opId,
+        entityName,
+        operationType,
+        timestamp,
+        entityKey,
+        status`,
+      appConfig: '&key',
+      syncIndex: '&tabla', // ← para registro de última sincronización
     });
   }
 }
 
 export const db = new MyDexieDatabase();
-
-// Example usage (illustrative, not part of this file's direct execution):
-// await db.unitsOfMeasure.add({ codigo: 'kg', name: 'Kilogram', symbol: 'kg', sincronizado: false, fechaModificacion: new Date() });
-// const unit = await db.unitsOfMeasure.where('codigo').equals('kg').first();
-// await db.appConfig.put({ key: 'refreshToken', value: 'someTokenValue' });
-// const token = await db.appConfig.get('refreshToken');
