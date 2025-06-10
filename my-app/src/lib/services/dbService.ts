@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import type { ClienteDbo } from '../types/cliente';
-import type { DepartamentoDbo } from '../types/departamento'; // Import DepartamentoDbo
+import type { DepartamentoDbo } from '../types/departamento';
+import type { MunicipioDbo } from '../types/municipio'; // Import MunicipioDbo
 
 export interface UnitOfMeasureDbo {
   localId?: number;
@@ -45,7 +46,8 @@ export class MyDexieDatabase extends Dexie {
   appConfig!: Table<AppConfigDbo, string>;
   syncIndex!: Table<SyncIndexDbo, string>;
   clientes!: Table<ClienteDbo, number>;
-  departamentos!: Table<DepartamentoDbo, number>; // Declare departamentos table
+  departamentos!: Table<DepartamentoDbo, number>;
+  municipios!: Table<MunicipioDbo, number>; // Declare municipios table
 
   constructor() {
     super('posOfflineFirstDb');
@@ -109,7 +111,6 @@ export class MyDexieDatabase extends Dexie {
         ultimaConsulta`
     });
 
-    // New version for departamentos table
     this.version(4).stores({
       unitsOfMeasure: `
         ++localId,
@@ -152,7 +153,62 @@ export class MyDexieDatabase extends Dexie {
         sincronizado,
         disponibleOffline,
         fechaModificacion,
-        ultimaConsulta` // Schema for departamentos
+        ultimaConsulta`
+    });
+
+    // New version for municipios table
+    this.version(5).stores({
+      unitsOfMeasure: `
+        ++localId,
+        &codigo,
+        id,
+        nombre,
+        abreviatura,
+        orden,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      pendingOperations: `
+        ++opId,
+        entityName,
+        operationType,
+        timestamp,
+        entityKey,
+        status`,
+      appConfig: '&key',
+      syncIndex: '&tabla',
+      clientes: `
+        ++localId,
+        &numeroDocumento,
+        id,
+        razonSocial,
+        primerNombre,
+        primerApellido,
+        email,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      departamentos: `
+        ++localId,
+        &id,
+        nombre,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      municipios: `
+        ++localId,
+        &id,
+        nombre,
+        departamentoId,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta` // Schema for municipios, added departamentoId index
     });
   }
 }

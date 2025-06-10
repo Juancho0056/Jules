@@ -1,6 +1,6 @@
 import { offlineStore } from '../stores/offlineStore';
 import { apiService } from './apiService';
-import { db, type PendingOperationDbo, type UnitOfMeasureDbo, type ClienteDbo, type DepartamentoDbo } from './dbService'; // Added DepartamentoDbo
+import { db, type PendingOperationDbo, type UnitOfMeasureDbo, type ClienteDbo, type DepartamentoDbo, type MunicipioDbo } from './dbService'; // Added MunicipioDbo
 import { get } from 'svelte/store';
 import { toastStore } from '../stores/toastStore';
 import type { CreateUnidadMedidaCommand, UpdateUnidadMedidaCommand, UnidadMedida } from '$lib/types/unidadMedida';
@@ -17,6 +17,14 @@ interface DepartamentoApiResponse {
   id: string;
   nombre: string;
   estado: boolean;
+  disponibleOffline: boolean;
+  fechaHoraModificacion?: string;
+}
+
+interface MunicipioApiResponse {
+  id: string;
+  nombre: string;
+  departamentoId: string;
   disponibleOffline: boolean;
   fechaHoraModificacion?: string;
 }
@@ -150,48 +158,82 @@ const processQueue = async () => {
           }
           break;
 
-        case 'Departamentos': // New logic for Departamentos
+        case 'Departamentos':
           switch (op.operationType) {
             case 'create':
-              // op.payload should be { id: string, nombre: string, disponibleOffline: boolean, estado: boolean }
-              // op.entityKey is departamento.id
               result = await apiService.post<DepartamentoApiResponse>('/api/Departamentos', op.payload);
               if (result.isSuccess && result.value) {
                 await db.departamentos.where('id').equals(op.entityKey!).modify({
                   sincronizado: true,
-                  fechaModificacion: new Date(result.value.fechaHoraModificacion!), // Add null check if needed
-                  estado: result.value.estado, // Sync estado from server response
-                  // nombre and disponibleOffline are set by client, id is key
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion!),
+                  estado: result.value.estado,
                 });
                 success = true;
               }
               break;
             case 'update':
-              // op.payload should be { nombre?: string, estado?: boolean, disponibleOffline?: boolean }
-              // op.entityKey is departamento.id
               result = await apiService.put<DepartamentoApiResponse>(`/api/Departamentos/${op.entityKey}`, op.payload);
               if (result.isSuccess && result.value) {
                 await db.departamentos.where('id').equals(op.entityKey!).modify({
                   sincronizado: true,
-                  fechaModificacion: new Date(result.value.fechaHoraModificacion!), // Add null check if needed
-                  nombre: result.value.nombre, // Sync nombre from server
-                  estado: result.value.estado, // Sync estado from server
-                  disponibleOffline: result.value.disponibleOffline // Sync disponibleOffline from server
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion!),
+                  nombre: result.value.nombre,
+                  estado: result.value.estado,
+                  disponibleOffline: result.value.disponibleOffline
                 });
                 success = true;
               }
               break;
             case 'delete':
-              // op.entityKey is departamento.id
               result = await apiService.delete(`/api/Departamentos/${op.entityKey}`);
               if (result.isSuccess) {
-                // Local deletion is handled by departamentoStore.
-                // Optionally, ensure it's deleted: await db.departamentos.where('id').equals(op.entityKey!).delete();
                 success = true;
               }
               break;
           }
-          break; // End of case 'Departamentos'
+          break;
+
+        case 'Municipios': // New logic for Municipios
+          switch (op.operationType) {
+            case 'create':
+              // op.payload is { id, nombre, departamentoId, disponibleOffline }
+              // op.entityKey is municipio.id
+              result = await apiService.post<MunicipioApiResponse>('/api/Municipios', op.payload);
+              if (result.isSuccess && result.value) {
+                await db.municipios.where('id').equals(op.entityKey!).modify({
+                  sincronizado: true,
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion!) // Add null check if needed
+                  // Other fields like nombre, departamentoId, disponibleOffline are set by client
+                  // API might not return them all, or they might not need updating if client is source of truth for them post-creation
+                });
+                success = true;
+              }
+              break;
+            case 'update':
+              // op.payload is { nombre, departamentoId, disponibleOffline }
+              // op.entityKey is municipio.id
+              result = await apiService.put<MunicipioApiResponse>(`/api/Municipios/${op.entityKey}`, op.payload);
+              if (result.isSuccess && result.value) {
+                await db.municipios.where('id').equals(op.entityKey!).modify({
+                  sincronizado: true,
+                  fechaModificacion: new Date(result.value.fechaHoraModificacion!), // Add null check if needed
+                  nombre: result.value.nombre,
+                  departamentoId: result.value.departamentoId,
+                  disponibleOffline: result.value.disponibleOffline
+                });
+                success = true;
+              }
+              break;
+            case 'delete':
+              // op.entityKey is municipio.id
+              result = await apiService.delete(`/api/Municipios/${op.entityKey}`);
+              if (result.isSuccess) {
+                // Local deletion is handled by municipioStore.
+                success = true;
+              }
+              break;
+          }
+          break; // End of case 'Municipios'
 
         default:
           console.warn(`Unknown entity type in sync queue: ${op.entityName}`);
