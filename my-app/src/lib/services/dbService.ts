@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import type { ClienteDbo } from '../types/cliente'; // Import ClienteDbo
 
 export interface UnitOfMeasureDbo {
   localId?: number;
@@ -42,6 +43,7 @@ export class MyDexieDatabase extends Dexie {
   pendingOperations!: Table<PendingOperationDbo, number>;
   appConfig!: Table<AppConfigDbo, string>;
   syncIndex!: Table<SyncIndexDbo, string>; // ← Nueva tabla SyncIndex
+  clientes!: Table<ClienteDbo, number>; // Declare clientes table
 
   constructor() {
     super('posOfflineFirstDb');
@@ -67,6 +69,43 @@ export class MyDexieDatabase extends Dexie {
         status`,
       appConfig: '&key',
       syncIndex: '&tabla', // ← para registro de última sincronización
+    });
+
+    // New version for clientes table
+    this.version(3).stores({
+      unitsOfMeasure: `
+        ++localId,
+        &codigo,
+        id,
+        nombre,
+        abreviatura,
+        orden,
+        estado,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta`,
+      pendingOperations: `
+        ++opId,
+        entityName,
+        operationType,
+        timestamp,
+        entityKey,
+        status`,
+      appConfig: '&key',
+      syncIndex: '&tabla',
+      clientes: `
+        ++localId,
+        &numeroDocumento,
+        id,
+        razonSocial,
+        primerNombre,
+        primerApellido,
+        email,
+        sincronizado,
+        disponibleOffline,
+        fechaModificacion,
+        ultimaConsulta` // Schema for clientes
     });
   }
 }
