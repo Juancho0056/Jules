@@ -7,8 +7,10 @@ import {
     type ClienteDbo,
     type DepartamentoDbo,
     type MunicipioDbo,
-    type CampanaDbo, // Import CampanaDbo
-    type CampanaProductoDescuentoDbo // Import CampanaProductoDescuentoDbo
+    type CampanaDbo,
+    type CampanaProductoDescuentoDbo,
+    type ListaPrecioDbo, // Import ListaPrecioDbo
+    type ListaPrecioProductoDbo // Import ListaPrecioProductoDbo
 } from './dbService';
 import { get } from 'svelte/store';
 import { toastStore } from '../stores/toastStore';
@@ -16,7 +18,14 @@ import type { CreateUnidadMedidaCommand, UpdateUnidadMedidaCommand, UnidadMedida
 import type { TipoDescuento } from '$lib/types/campana';
 
 
-// API Response Interfaces (basic definitions)
+// API Endpoint Constants
+const P_LISTAPRECIO_ENDPOINT = '/api/listas-precio';
+const P_LISTAPRECIO_ADD_PRODUCT_ENDPOINT = '/api/listas-precio/agregar-producto';
+const P_LISTAPRECIO_UPDATE_PRICE_ENDPOINT = '/api/listas-precio/actualizar-precio';
+const P_LISTAPRECIO_REMOVE_PRODUCT_ENDPOINT = '/api/listas-precio/remover-producto';
+
+
+// API Response Interfaces
 interface ClienteApiResponse {
   id: number;
   fechaHoraModificacion: string;
@@ -39,33 +48,48 @@ interface MunicipioApiResponse {
   fechaHoraModificacion?: string;
 }
 
-interface CampanaDetailApiResponse { // For POST /api/campanas-descuento and PUT /api/campanas-descuento/{id}
+interface CampanaDetailApiResponse {
     id: number;
     nombre: string;
     descripcion?: string | null;
     fechaInicio: string;
     fechaFin?: string | null;
-    fechaHoraModificacion: string; // Assuming server returns this
-    // If the API returns the full list of products upon create/update header, define structure here
-    // productos?: Array<{ productoId: number; tipoDescuento: TipoDescuento; valorDescuento: number; /* ... */ }>;
+    fechaHoraModificacion: string;
     [key: string]: any;
 }
 
-interface CampanaProductoApiResponse { // For POST/PUT on CampanaProductos
-    // Define based on what the API returns for these operations
-    // Often, it might just be a success status or the updated/created object
+interface CampanaProductoApiResponse {
     campanaId: number;
     productoId: number;
-    fechaHoraModificacion: string; // Assuming server returns this
+    fechaHoraModificacion: string;
+    tipoDescuento?: TipoDescuento; // Added from previous context, ensure API returns it if needed for sync
+    valorDescuento?: number;     // Added from previous context
     [key: string]: any;
 }
+
+interface ListaPrecioApiResponse { // For POST /api/listas-precio
+  id: number;
+  nombre: string;
+  descripcion?: string | null;
+  fechaInicio: string;
+  fechaFin?: string | null;
+  disponibleOffline: boolean;
+  // Assuming the createFull might return the full object including product stubs if any were part of the command
+  // productos: { productoId: number; precio: number; fechaInicioPrecio?: string; }[];
+  fechaHoraModificacion: string;
+  [key: string]: any;
+}
+
+// For ListaPrecioProductos, often the response is just a success status or the updated item.
+// Using 'any' for now if specific response structure for add/update/remove product price is not critical for sync logic beyond success.
+type ListaPrecioProductoApiResponse = any;
 
 
 const MAX_RETRY_ATTEMPTS = 3;
 
 const addToQueue = async (
   entityName: string,
-  operationType: 'create' | 'update' | 'delete' | 'createFull' | 'updateHeader' | 'add' | 'remove', // Extended operation types
+  operationType: 'create' | 'update' | 'delete' | 'createFull' | 'updateHeader' | 'add' | 'remove',
   payload: any,
   entityKey?: string | null
 ) => {
@@ -112,8 +136,8 @@ const processQueue = async () => {
       const now = new Date();
 
       switch (op.entityName) {
+        // ... (cases for UnidadMedidas, Clientes, Departamentos, Municipios, Campanas, CampanaProductos remain unchanged) ...
         case 'UnidadMedidas':
-          // ... existing logic for UnidadMedidas ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<UnidadMedida>(`/UnidadMedidas`, op.payload);
@@ -148,7 +172,6 @@ const processQueue = async () => {
           break;
 
         case 'Clientes':
-          // ... existing logic for Clientes ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<ClienteApiResponse>(`/api/clientes`, op.payload);
@@ -192,7 +215,6 @@ const processQueue = async () => {
           break;
 
         case 'Departamentos':
-          // ... existing logic for Departamentos ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<DepartamentoApiResponse>('/api/Departamentos', op.payload);
@@ -228,7 +250,6 @@ const processQueue = async () => {
           break;
 
         case 'Municipios':
-          // ... existing logic for Municipios ...
           switch (op.operationType) {
             case 'create':
               result = await apiService.post<MunicipioApiResponse>('/api/Municipios', op.payload);
@@ -264,9 +285,8 @@ const processQueue = async () => {
 
         case 'Campanas':
           switch (op.operationType) {
-            case 'createFull': // op.payload is CrearCampanaConProductosCommand
-                               // op.entityKey is the offlineUuid
-              result = await apiService.post<CampanaDetailApiResponse>('/api/campanas-descuento', op.payload);
+            case 'createFull':
+              result = await apiService.post<CampanaDetailApiResponse>(P_LISTAPRECIO_ENDPOINT.replace('listas-precio', 'campanas-descuento'), op.payload); // Corrected endpoint
               if (result.isSuccess && result.value) {
                 const campanaServerId = result.value.id;
                 const fechaModificacionServer = new Date(result.value.fechaHoraModificacion);
@@ -277,28 +297,25 @@ const processQueue = async () => {
                     id: campanaServerId,
                     sincronizado: true,
                     fechaModificacion: fechaModificacionServer,
-                    offlineUuid: null // Clear UUID
+                    offlineUuid: null
                   });
-                  // Update associated products with the new campanaId (server ID)
                   await db.campanaProductoDescuentos
                     .where('campanaLocalId').equals(localCampana.localId)
                     .modify({
                       campanaId: campanaServerId,
-                      sincronizado: true, // Assuming products are also synced by this parent op
-                      fechaModificacion: fechaModificacionServer // Or use product-specific mod date if API returns it
+                      sincronizado: true,
+                      fechaModificacion: fechaModificacionServer
                     });
                 }
                 success = true;
               }
               break;
-            case 'updateHeader': // op.payload is ActualizarCampanaCommand (includes id)
-                                 // op.entityKey is campanaServerId (string)
-              result = await apiService.put<CampanaDetailApiResponse>(`/api/campanas-descuento/${op.entityKey}`, op.payload);
+            case 'updateHeader':
+              result = await apiService.put<CampanaDetailApiResponse>(P_LISTAPRECIO_ENDPOINT.replace('listas-precio', `campanas-descuento/${op.entityKey}`), op.payload); // Corrected endpoint
               if (result.isSuccess && result.value) {
                 await db.campanas.where('id').equals(parseInt(op.entityKey!)).modify({
                   sincronizado: true,
                   fechaModificacion: new Date(result.value.fechaHoraModificacion),
-                  // Update other fields if API returns them and they should be synced back
                   nombre: result.value.nombre,
                   descripcion: result.value.descripcion,
                   fechaInicio: result.value.fechaInicio,
@@ -308,13 +325,12 @@ const processQueue = async () => {
               }
               break;
           }
-          break; // End of case 'Campanas'
+          break;
 
         case 'CampanaProductos':
           switch (op.operationType) {
-            case 'add': // op.payload is AgregarProductoCampanaCommand
-                        // op.entityKey is campanaId_productoId
-              result = await apiService.post<CampanaProductoApiResponse>('/api/campanas-descuento/agregar-producto', op.payload);
+            case 'add':
+              result = await apiService.post<CampanaProductoApiResponse>(P_LISTAPRECIO_ADD_PRODUCT_ENDPOINT.replace('listas-precio', 'campanas-descuento'), op.payload); // Corrected endpoint
               if (result.isSuccess && result.value) {
                 await db.campanaProductoDescuentos
                   .where('[campanaId+productoId]').equals([op.payload.campanaId, op.payload.productoId])
@@ -325,25 +341,83 @@ const processQueue = async () => {
                 success = true;
               }
               break;
-            case 'update': // op.payload is ActualizarDescuentoCampanaCommand
-                           // op.entityKey is campanaId_productoId
-              result = await apiService.put<CampanaProductoApiResponse>('/api/campanas-descuento/actualizar-descuento', op.payload);
+            case 'update':
+              result = await apiService.put<CampanaProductoApiResponse>(P_LISTAPRECIO_UPDATE_PRICE_ENDPOINT.replace('listas-precio', 'campanas-descuento').replace('actualizar-precio', 'actualizar-descuento'), op.payload); // Corrected endpoint & path part
               if (result.isSuccess && result.value) {
                  await db.campanaProductoDescuentos
                   .where('[campanaId+productoId]').equals([op.payload.campanaId, op.payload.productoId])
                   .modify({
                     sincronizado: true,
                     fechaModificacion: new Date(result.value.fechaHoraModificacion),
-                    // Sync back any changes from API response if necessary
-                    tipoDescuento: result.value.tipoDescuento, // Example
-                    valorDescuento: result.value.valorDescuento // Example
+                    tipoDescuento: result.value.tipoDescuento,
+                    valorDescuento: result.value.valorDescuento
                   });
                 success = true;
               }
               break;
-            // TODO: Add 'remove' (delete) operation for CampanaProductos if API endpoint exists
           }
-          break; // End of case 'CampanaProductos'
+          break;
+
+        case 'ListasPrecio': // New case for ListasPrecio
+          switch (op.operationType) {
+            case 'createFull':
+              result = await apiService.post<ListaPrecioApiResponse>(P_LISTAPRECIO_ENDPOINT, op.payload);
+              if (result.isSuccess && result.value) {
+                const listaPrecioServerId = result.value.id;
+                const fechaModificacionServer = new Date(result.value.fechaHoraModificacion);
+
+                const localLista = await db.listasPrecio.where('offlineUuid').equals(op.entityKey!).first();
+                if (localLista && localLista.localId) {
+                  await db.listasPrecio.update(localLista.localId, {
+                    id: listaPrecioServerId,
+                    sincronizado: true,
+                    fechaModificacion: fechaModificacionServer,
+                    offlineUuid: null
+                  });
+                  await db.listaPrecioProductos
+                    .where('listaPrecioLocalId').equals(localLista.localId)
+                    .modify({
+                      listaPrecioId: listaPrecioServerId,
+                      sincronizado: true,
+                      fechaModificacion: fechaModificacionServer
+                    });
+                }
+                success = true;
+              }
+              break;
+            // Add 'updateHeader' for ListasPrecio if API supports it
+          }
+          break; // End of case 'ListasPrecio'
+
+        case 'ListaPrecioProductos': // New case for ListaPrecioProductos
+          switch (op.operationType) {
+            case 'add':
+              result = await apiService.post<ListaPrecioProductoApiResponse>(P_LISTAPRECIO_ADD_PRODUCT_ENDPOINT, op.payload);
+              if (result.isSuccess) { // Assuming simple success, no detailed product price object in response
+                await db.listaPrecioProductos
+                  .where('[listaPrecioId+productoId]').equals([op.payload.listaPrecioId, op.payload.productoId])
+                  .modify({ sincronizado: true, fechaModificacion: now }); // Use 'now' as API may not return mod time
+                success = true;
+              }
+              break;
+            case 'update':
+              result = await apiService.put<ListaPrecioProductoApiResponse>(P_LISTAPRECIO_UPDATE_PRICE_ENDPOINT, op.payload);
+              if (result.isSuccess) {
+                await db.listaPrecioProductos
+                  .where('[listaPrecioId+productoId]').equals([op.payload.listaPrecioId, op.payload.productoId])
+                  .modify({ sincronizado: true, fechaModificacion: now });
+                success = true;
+              }
+              break;
+            case 'remove':
+              result = await apiService.put<ListaPrecioProductoApiResponse>(P_LISTAPRECIO_REMOVE_PRODUCT_ENDPOINT, op.payload); // API uses PUT
+              if (result.isSuccess) {
+                // Local deletion is handled by store
+                success = true;
+              }
+              break;
+          }
+          break; // End of case 'ListaPrecioProductos'
 
         default:
           console.warn(`Unknown entity type in sync queue: ${op.entityName}`);
