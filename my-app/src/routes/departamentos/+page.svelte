@@ -1,6 +1,7 @@
 <!-- my-app/src/routes/departamentos/+page.svelte -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { get } from 'svelte/store'; // Added get
   import { departamentoStore  } from '$lib/stores/departamentoStore';
   import type { DepartamentoDbo } from '$lib/types/departamento';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
@@ -8,16 +9,10 @@
   import {
     currentUserPermissions,
     hasPermission,
+    PERMISSIONS,
   } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
-
-  // Placeholder permissions
-  const PERMISSIONS = {
-    CREATE_DEPARTAMENTO: 'Permissions.Departamentos.Create',
-    EDIT_DEPARTAMENTO: 'Permissions.Departamentos.Edit',
-    DELETE_DEPARTAMENTO: 'Permissions.Departamentos.Delete',
-  };
 
   let departamentos: DepartamentoDbo[] = [];
   let isLoading = true;
@@ -108,16 +103,17 @@
   ];
 
   function updateFormFieldsForEdit(isEditing: boolean) {
-    //formFields = formFields.map(field => {
-    //  if (field.name === 'id') {
-    //    return { ...field, disabled: isEditing };
-    //  }
-    //  return field;
-    //});
+    formFields = formFields.map(field => {
+      if (field.name === 'id') {
+        return { ...field, disabled: isEditing };
+      }
+      return field;
+    });
     formKey++; // Re-render form with updated field properties
   }
 
   function handleAdd() {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.CREATE_DEPARTAMENTO)) {
       toastStore.addToast('No tienes permiso para crear departamentos.', 'warning');
       return;
@@ -129,6 +125,7 @@
   }
 
   function handleEdit(event: CustomEvent<DepartamentoDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.EDIT_DEPARTAMENTO)) {
       toastStore.addToast('No tienes permiso para editar departamentos.', 'warning');
       return;
@@ -141,6 +138,7 @@
   }
 
   async function handleDelete(event: CustomEvent<DepartamentoDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.DELETE_DEPARTAMENTO)) {
       toastStore.addToast('No tienes permiso para eliminar departamentos.', 'warning');
       return;
@@ -157,6 +155,7 @@
   }
 
   async function handleSaveForm(event: CustomEvent<Record<string, any>>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const formData = event.detail;
     try {
       if (!formData.id?.trim() || !formData.nombre?.trim()) {
@@ -173,7 +172,15 @@
 
       if (editingDepartamento && editingDepartamento.localId !== undefined) {
         // Update: localId and original ID (currentId) are from editingDepartamento
-        
+        await departamentoStore.update(
+          editingDepartamento.localId,
+          { // Payload: only include fields that can be changed
+            nombre: dataPayload.nombre,
+            estado: dataPayload.estado,
+            disponibleOffline: dataPayload.disponibleOffline
+          },
+          editingDepartamento.id // Pass the original ID as currentId for the syncService
+        );
         toastStore.addToast('Departamento actualizado localmente.', 'success');
       } else {
         // Create
@@ -209,7 +216,7 @@
 
   <header class="view-header">
     <h1>Departamentos</h1>
-    {#if hasPermission(PERMISSIONS.CREATE_DEPARTAMENTO)}
+    {#if hasPermission(PERMISSIONS.CREATE_DEPARTAMENTO) && $isOnline}
       <button type="button" class="btn btn-primary" on:click={handleAdd}>
         Crear Nuevo Departamento
       </button>
