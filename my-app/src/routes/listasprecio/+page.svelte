@@ -7,17 +7,11 @@
   // import { productStore, type ProductDbo } from '$lib/stores/productStore';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
-  import { currentUserPermissions, hasPermission } from '$lib/stores/authStore';
+  import { currentUserPermissions, hasPermission, PERMISSIONS } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
+  import { get } from 'svelte/store'; // Added get
   import { max, type from } from 'rxjs';
-
-  const PERMISSIONS = {
-    CREATE_LISTA_PRECIO: 'Permissions.ListasPrecio.Create',
-    EDIT_LISTA_PRECIO: 'Permissions.ListasPrecio.Edit',     // Primarily for managing products
-    DELETE_LISTA_PRECIO: 'Permissions.ListasPrecio.Delete',
-    MANAGE_PRODUCTOS_LISTA_PRECIO: 'Permissions.ListasPrecio.ManageProductos',
-  };
 
   let currentListasPrecio: ListaPrecioDbo[] = [];
   let isLoadingListas = true;
@@ -79,8 +73,8 @@
     { key: 'actions', label: 'Acciones', isAction: true },
   ];
   const productPriceTableActions = [
-    { label: 'Editar Precio', eventName: 'editProductPrice', class: 'btn-edit', permission: PERMISSIONS.MANAGE_PRODUCTOS_LISTA_PRECIO },
-    { label: 'Remover Producto', eventName: 'removeProductPrice', class: 'btn-delete', permission: PERMISSIONS.MANAGE_PRODUCTOS_LISTA_PRECIO },
+    { label: 'Editar Precio', eventName: 'editProductPrice', class: 'btn-edit', permission: PERMISSIONS.EDIT_LISTAPRECIO }, // Replaced MANAGE_PRODUCTOS_LISTA_PRECIO
+    { label: 'Remover Producto', eventName: 'removeProductPrice', class: 'btn-delete', permission: PERMISSIONS.EDIT_LISTAPRECIO }, // Replaced MANAGE_PRODUCTOS_LISTA_PRECIO
   ];
 
   let headerFormFields= [
@@ -106,6 +100,7 @@
   }
 
   function handleCreateNewListaPrecio() {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.CREATE_LISTA_PRECIO)) { toastStore.addToast('Sin permiso.'); return; }
     listaPrecioStore.selectedListaPrecioForDetails.set(null);
     initialHeaderFormData = { nombre: '', descripcion: '', fechaInicio: new Date().toISOString().split('T')[0], fechaFin: '', disponibleOffline: true };
@@ -138,6 +133,7 @@
 
 
   async function handleSaveListaPrecioHeader(event: CustomEvent<Record<string, any>>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const formData = event.detail;
     const isoFechaInicio = formData.fechaInicio ? new Date(formData.fechaInicio).toISOString() : '';
     const isoFechaFin = formData.fechaFin ? new Date(formData.fechaFin).toISOString() : null;
@@ -149,6 +145,9 @@
           if(selectedLista.id) listaPrecioStore.getListaPrecioWithDetails(selectedLista.id);
           else if(selectedLista.offlineUuid) listaPrecioStore.getListaPrecioWithDetails(selectedLista.offlineUuid);
       }
+      // TODO: Implement full header update sync with backend via listaPrecioStore.updateListaPrecioHeader
+      // For now, only 'disponibleOffline' is updated locally for existing records.
+      // Other header fields (nombre, descripcion, fechaInicio, fechaFin) are not synced on edit.
       // toastStore.addToast('Gestión de productos habilitada. Cambios al encabezado no se sincronizan.', 'info');
     } else if (!isEditingHeader) {
       const listaData = {
@@ -173,8 +172,9 @@
   }
 
   function handleOpenAddProductoForm() {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!selectedLista) { toastStore.addToast('No hay lista de precio seleccionada.'); return; }
-    if (!hasPermission(PERMISSIONS.MANAGE_PRODUCTOS_LISTA_PRECIO)) { toastStore.addToast('Sin permiso.'); return; }
+    if (!hasPermission(PERMISSIONS.EDIT_LISTAPRECIO)) { toastStore.addToast('Sin permiso.'); return; } // Replaced MANAGE_PRODUCTOS_LISTA_PRECIO
 
     if (!selectedLista.id && !selectedLista.localId) {
         toastStore.addToast('La lista de precio debe guardarse primero.', 'warning'); return;
@@ -195,6 +195,7 @@
   }
 
   function handleEditProductoPrecio(event: CustomEvent<ListaPrecioProductoDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     editingProductoPrecio = event.detail;
     initialProductFormData = {
       ...editingProductoPrecio,
@@ -207,6 +208,7 @@
   }
 
   async function handleSaveProductoPrecio(event: CustomEvent<Record<string, any>>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const formData = event.detail;
     if (!selectedLista || (!selectedLista.id && !selectedLista.localId)) {
         toastStore.addToast('Error: No hay lista de precio seleccionada o la lista no tiene ID.', 'error');
@@ -247,6 +249,7 @@
   }
 
  async function handleRemoveProductoPrice(event: CustomEvent<ListaPrecioProductoDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const item = event.detail;
     if (!selectedLista || !selectedLista.id) {
         toastStore.addToast('Lista de precio no identificada o no sincronizada.', 'error'); return;
@@ -267,7 +270,7 @@
 
   <header class="view-header">
     <h1>Listas de Precio</h1>
-    {#if hasPermission(PERMISSIONS.CREATE_LISTA_PRECIO)}
+    {#if hasPermission(PERMISSIONS.CREATE_LISTA_PRECIO) && $isOnline}
       <button type="button" class="btn btn-primary" on:click={handleCreateNewListaPrecio}>Crear Nueva Lista</button>
     {/if}
   </header>
@@ -306,9 +309,9 @@
         {#if isEditingHeader && selectedLista && (selectedLista.id || selectedLista.localId)}
           <section class="product-prices-section">
             <h3>Productos y Precios en esta Lista</h3>
-            {#if hasPermission(PERMISSIONS.MANAGE_PRODUCTOS_LISTA_PRECIO)}
+            {#if hasPermission(PERMISSIONS.EDIT_LISTAPRECIO) && $isOnline}
               {#if selectedLista.id /* Only allow adding products if header is synced and has server ID */}
-                <button class="btn btn-secondary" on:click={() =>{}}>Agregar Producto/Precio</button>
+                <button class="btn btn-secondary" on:click={handleOpenAddProductoForm}>Agregar Producto/Precio</button>
               {:else}
                 <p class="text-sm text-gray-500 italic py-2">La lista de precios debe sincronizarse primero para obtener un ID de servidor antes de agregar productos.</p>
               {/if}

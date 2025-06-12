@@ -3,8 +3,9 @@ import { db, type UnitOfMeasureDbo } from '../services/dbService';
 import { apiService } from '../services/apiService';
 import { syncService } from '../services/syncService';
 import { offlineStore } from './offlineStore';
-import { liveQuery } from 'dexie';
+// import { liveQuery } from 'dexie'; // Not directly used for manual live query setup here
 import { dexieStore } from './dexieStore';
+import { toastStore } from './toastStore'; // Added toastStore
 
 export interface UnitOfMeasureState {
   units: UnitOfMeasureDbo[];
@@ -35,6 +36,9 @@ function createUnitOfMeasureStore() {
     update(s => ({ ...s, isLoading: true, error: null }));
 
     try {
+      // Ensure isLoading is true at the start of an API fetch attempt.
+      // update(s => ({ ...s, isLoading: true, error: null })); // Already called before this function
+
       const lastSync = await db.syncIndex.get('unitsOfMeasure');
       const query = lastSync ? `actualizadoDesde=${lastSync.lastSyncedAt.toISOString()}` : '';
       const response = await apiService.get<UnitOfMeasureDbo[]>(`/UnidadMedidas?offline=true&${query}`);
@@ -58,6 +62,7 @@ function createUnitOfMeasureStore() {
       update(s => ({ ...s, isLoading: false }));
     } catch (error) {
       console.error('Error fetching unidades from API:', error);
+      toastStore.addToast('Error sincronizando unidades de medida.', 'error'); // Added error toast
       update(s => ({ ...s, isLoading: false, error: error instanceof Error ? error : new Error(String(error)) }));
     }
   };
@@ -71,7 +76,7 @@ function createUnitOfMeasureStore() {
     await db.unitsOfMeasure
       .where('ultimaConsulta')
       .below(cutoffDate)
-      .and(unit => unit.disponibleOffline)
+      .and(unit => unit.disponibleOffline === false) // Changed condition
       .delete();
   };
 
@@ -133,13 +138,34 @@ function createUnitOfMeasureStore() {
     selectedUnitToEdit.set(null);
   };
 
-  // Al reconectar, descarga incrementalmente unidades
-  offlineStore.subscribe(async (state) => {
+  let isFirstConnection = true;
+  let isProcessingConnectivityChange = false;
+
+  const handleConnectivityChange = async () => {
+    if (isProcessingConnectivityChange) return;
+    isProcessingConnectivityChange = true;
+
+    const state = get(offlineStore); // Get current state directly
+
     if (!state.isOffline) {
-      await fetchFromApi();
-      await cleanupOldUnits();
+      toastStore.addToast('Conectado. Sincronizando unidades...', 'info', 2000);
+      await fetchFromApi(); // Fetch latest data
+      await syncService.processQueue(); // Process any pending changes
+
+      if (isFirstConnection) {
+        await cleanupOldUnits();
+        isFirstConnection = false;
+      }
+    } else {
+      toastStore.addToast('Desconectado. Unidades en modo offline.', 'warning');
     }
-  });
+    isProcessingConnectivityChange = false;
+  };
+
+  const unsubscribeFromOfflineStore = offlineStore.subscribe(handleConnectivityChange);
+  // Initial call on next tick to ensure Svelte cycle completes and other stores might init
+  setTimeout(handleConnectivityChange, 0);
+
 
   return {
     subscribe,
@@ -151,7 +177,10 @@ function createUnitOfMeasureStore() {
     selectedUnitToEdit,
     selectUnitToEdit,
     clearSelectedUnitToEdit,
-    destroy: unsubscribeFromLiveQuery,
+    destroy: () => {
+      unsubscribeFromLiveQuery(); // Keep this if dexieStore's live query is still active
+      unsubscribeFromOfflineStore();
+    },
   };
 }
 

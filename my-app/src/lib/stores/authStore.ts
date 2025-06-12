@@ -30,6 +30,36 @@ export const PERMISSIONS = {
   // Settings (example)
   VIEW_SETTINGS: 'view_settings',
   EDIT_SETTINGS: 'edit_settings',
+
+  // Clientes Permissions
+  CREATE_CLIENTE: 'create_cliente',
+  EDIT_CLIENTE: 'edit_cliente',
+  DELETE_CLIENTE: 'delete_cliente',
+  VIEW_CLIENTE: 'view_cliente',
+
+  // Campanas Permissions
+  CREATE_CAMPANA: 'create_campana',
+  EDIT_CAMPANA: 'edit_campana',
+  DELETE_CAMPANA: 'delete_campana',
+  VIEW_CAMPANA: 'view_campana',
+
+  // Departamentos Permissions
+  CREATE_DEPARTAMENTO: 'create_departamento',
+  EDIT_DEPARTAMENTO: 'edit_departamento',
+  DELETE_DEPARTAMENTO: 'delete_departamento',
+  VIEW_DEPARTAMENTO: 'view_departamento',
+
+  // ListasPrecio Permissions
+  CREATE_LISTAPRECIO: 'create_listaprecio',
+  EDIT_LISTAPRECIO: 'edit_listaprecio',
+  DELETE_LISTAPRECIO: 'delete_listaprecio',
+  VIEW_LISTAPRECIO: 'view_listaprecio',
+
+  // Municipios Permissions
+  CREATE_MUNICIPIO: 'create_municipio',
+  EDIT_MUNICIPIO: 'edit_municipio',
+  DELETE_MUNICIPIO: 'delete_municipio',
+  VIEW_MUNICIPIO: 'view_municipio',
 };
 
 export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS];
@@ -48,11 +78,37 @@ const rolePermissions: Record<Role, Permission[]> = {
     PERMISSIONS.VIEW_SALES_REPORTS,
     PERMISSIONS.VIEW_SETTINGS,
     PERMISSIONS.EDIT_SETTINGS,
+    // Admin gets all new permissions
+    PERMISSIONS.CREATE_CLIENTE,
+    PERMISSIONS.EDIT_CLIENTE,
+    PERMISSIONS.DELETE_CLIENTE,
+    PERMISSIONS.VIEW_CLIENTE,
+    PERMISSIONS.CREATE_CAMPANA,
+    PERMISSIONS.EDIT_CAMPANA,
+    PERMISSIONS.DELETE_CAMPANA,
+    PERMISSIONS.VIEW_CAMPANA,
+    PERMISSIONS.CREATE_DEPARTAMENTO,
+    PERMISSIONS.EDIT_DEPARTAMENTO,
+    PERMISSIONS.DELETE_DEPARTAMENTO,
+    PERMISSIONS.VIEW_DEPARTAMENTO,
+    PERMISSIONS.CREATE_LISTAPRECIO,
+    PERMISSIONS.EDIT_LISTAPRECIO,
+    PERMISSIONS.DELETE_LISTAPRECIO,
+    PERMISSIONS.VIEW_LISTAPRECIO,
+    PERMISSIONS.CREATE_MUNICIPIO,
+    PERMISSIONS.EDIT_MUNICIPIO,
+    PERMISSIONS.DELETE_MUNICIPIO,
+    PERMISSIONS.VIEW_MUNICIPIO,
   ],
   [ROLES.VENDEDOR]: [
     PERMISSIONS.VIEW_UNIDAD, // Can view units but not change them
     PERMISSIONS.VIEW_PRODUCT,
     PERMISSIONS.CREATE_SALE,
+    PERMISSIONS.VIEW_CLIENTE,
+    PERMISSIONS.VIEW_CAMPANA,
+    PERMISSIONS.VIEW_DEPARTAMENTO,
+    PERMISSIONS.VIEW_LISTAPRECIO,
+    PERMISSIONS.VIEW_MUNICIPIO,
   ],
   [ROLES.SUPERVISOR]: [
     PERMISSIONS.VIEW_UNIDAD,
@@ -60,6 +116,11 @@ const rolePermissions: Record<Role, Permission[]> = {
     PERMISSIONS.EDIT_PRODUCT,   // Can edit products
     PERMISSIONS.VIEW_PRODUCT,
     PERMISSIONS.VIEW_SALES_REPORTS,
+    PERMISSIONS.VIEW_CLIENTE,
+    PERMISSIONS.VIEW_CAMPANA,
+    PERMISSIONS.VIEW_DEPARTAMENTO,
+    PERMISSIONS.VIEW_LISTAPRECIO,
+    PERMISSIONS.VIEW_MUNICIPIO,
   ],
   [ROLES.NONE]: [],
 };

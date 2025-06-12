@@ -132,7 +132,7 @@ function createCampanaStore() {
 
     const oldCampanas = await db.campanas
       .where('ultimaConsulta').below(cutoffDate)
-      .and(c => c.disponibleOffline === true).toArray(); // Only cleanup offline-available ones
+      .and(c => c.disponibleOffline === false).toArray(); // Changed condition
 
     let count = 0;
     for(const camp of oldCampanas) {

@@ -11,16 +11,10 @@
   import {
     currentUserPermissions,
     hasPermission,
+    PERMISSIONS,
   } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
-
-  // Placeholder permissions
-  const PERMISSIONS = {
-    CREATE_MUNICIPIO: 'Permissions.Municipios.Create',
-    EDIT_MUNICIPIO: 'Permissions.Municipios.Edit',
-    DELETE_MUNICIPIO: 'Permissions.Municipios.Delete',
-  };
 
   let municipios: MunicipioDbo[] = [];
   let isLoading = true;
@@ -104,12 +98,12 @@
   ];
 
   function updateDepartamentoOptionsInFormFields() {
-    //formFields = formFields.map(field => {
-    //  if (field.name === 'departamentoId') {
-    //    return { ...field, options: departamentoOptions };
-    //  }
-    //  return field;
-    //});
+    formFields = formFields.map(field => {
+      if (field.name === 'departamentoId') {
+        return { ...field, options: departamentoOptions };
+      }
+      return field;
+    });
     // Only increment formKey if the form is actually visible and might need re-rendering
     // This prevents unnecessary re-renders if options update in background
     if (showForm) {
@@ -118,16 +112,17 @@
   }
 
   function updateFormFieldsForEditState(isEditing: boolean) {
-    //formFields = formFields.map(field => {
-    //  if (field.name === 'id') return { ...field, disabled: isEditing };
-    //  // Ensure departamentoId field always has the latest options
-    //  if (field.name === 'departamentoId') return { ...field, options: departamentoOptions };
-    //  return field;
-    //});
+    formFields = formFields.map(field => {
+      if (field.name === 'id') return { ...field, disabled: isEditing };
+      // Ensure departamentoId field always has the latest options
+      if (field.name === 'departamentoId') return { ...field, options: departamentoOptions };
+      return field;
+    });
     formKey++;
   }
 
   function handleAdd() {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.CREATE_MUNICIPIO)) {
       toastStore.addToast('No tienes permiso para crear municipios.', 'warning'); return;
     }
@@ -138,6 +133,7 @@
   }
 
   function handleEdit(event: CustomEvent<MunicipioDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.EDIT_MUNICIPIO)) {
       toastStore.addToast('No tienes permiso para editar municipios.', 'warning'); return;
     }
@@ -149,6 +145,7 @@
   }
 
   async function handleDelete(event: CustomEvent<MunicipioDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.DELETE_MUNICIPIO)) {
       toastStore.addToast('No tienes permiso para eliminar municipios.', 'warning'); return;
     }
@@ -164,6 +161,7 @@
   }
 
   async function handleSaveForm(event: CustomEvent<Record<string, any>>) {
+    if (!get(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const formData = event.detail;
     try {
       if (!formData.id?.trim() || !formData.nombre?.trim() || !formData.departamentoId) {
@@ -177,11 +175,15 @@
       };
 
       if (editingMunicipio && editingMunicipio.localId !== undefined) {
-        //await municipioStore.update(
-        //  editingMunicipio.localId,
-        //  { nombre: dataPayload.nombre, departamentoId: dataPayload.departamentoId, disponibleOffline: dataPayload.disponibleOffline },
-        //  editingMunicipio.id
-        //);
+        await municipioStore.update(
+          editingMunicipio.localId,
+          { // Payload: only include fields that can be changed
+            nombre: dataPayload.nombre,
+            departamentoId: dataPayload.departamentoId,
+            disponibleOffline: dataPayload.disponibleOffline
+          },
+          editingMunicipio.id // Pass the original ID as currentId for the syncService
+        );
         toastStore.addToast('Municipio actualizado localmente.', 'success');
       } else {
         const existing = municipios.find(m => m.id === dataPayload.id);
@@ -214,7 +216,7 @@
 
   <header class="view-header">
     <h1>Municipios</h1>
-    {#if hasPermission(PERMISSIONS.CREATE_MUNICIPIO)}
+    {#if hasPermission(PERMISSIONS.CREATE_MUNICIPIO) && $isOnline}
       <button type="button" class="btn btn-primary" on:click={handleAdd}>
         Crear Nuevo Municipio
       </button>

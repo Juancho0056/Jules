@@ -8,17 +8,10 @@
   import type { CampanaDbo, CampanaProductoDescuentoDbo, TipoDescuento } from '$lib/types/campana';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
   import FormBase from '$lib/components/forms/FormBase.svelte';
-  import { currentUserPermissions, hasPermission } from '$lib/stores/authStore';
+  import { currentUserPermissions, hasPermission, PERMISSIONS } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
  
-
-  const PERMISSIONS = {
-    CREATE_CAMPANA: 'Permissions.Campanas.Create',
-    EDIT_CAMPANA: 'Permissions.Campanas.Edit',
-    DELETE_CAMPANA: 'Permissions.Campanas.Delete',
-    MANAGE_PRODUCTOS_CAMPANA: 'Permissions.Campanas.ManageProductos',
-  };
 
   let currentCampaigns: CampanaDbo[] = [];
   let isLoadingCampaigns = true;
@@ -80,8 +73,8 @@
     { key: 'actions', label: 'Acciones', isAction: true },
   ];
   const productTableActions = [
-    { label: 'Editar', eventName: 'editProduct', class: 'btn-edit', permission: PERMISSIONS.MANAGE_PRODUCTOS_CAMPANA },
-    // { label: 'Remover', eventName: 'removeProduct', class: 'btn-delete', permission: PERMISSIONS.MANAGE_PRODUCTOS_CAMPANA },
+    { label: 'Editar', eventName: 'editProduct', class: 'btn-edit', permission: PERMISSIONS.EDIT_CAMPANA }, // Replaced MANAGE_PRODUCTOS_CAMPANA
+    // { label: 'Remover', eventName: 'removeProduct', class: 'btn-delete', permission: PERMISSIONS.EDIT_CAMPANA }, // Replaced MANAGE_PRODUCTOS_CAMPANA
   ];
 
   // --- Form Field Definitions ---
@@ -104,6 +97,7 @@
 
   // --- Event Handlers ---
   function handleCreateNewCampaign() {
+    if (!svelteGet(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.CREATE_CAMPANA)) { toastStore.addToast('Sin permiso.'); return; }
     campanaStore.selectedCampanaForDetails.set(null); // Clear selection
     initialHeaderFormData = { nombre: '', descripcion: '', fechaInicio: new Date().toISOString().split('T')[0], fechaFin: '' };
@@ -144,6 +138,7 @@
 
 
   async function handleSaveCampaignHeader(event: CustomEvent<Record<string, any>>) {
+    if (!svelteGet(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const formData = event.detail;
     const isoFechaInicio = formData.fechaInicio ? new Date(formData.fechaInicio).toISOString() : '';
     const isoFechaFin = formData.fechaFin ? new Date(formData.fechaFin).toISOString() : null;
@@ -171,6 +166,7 @@
   }
 
   function handleOpenAddProductForm() {
+    if (!svelteGet(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     if (!selectedCampana) { toastStore.addToast('No hay campaña seleccionada.'); return;}
     // If selectedCampana.id is null/undefined (campaign created offline and not yet synced),
     // adding products that need campanaId (server ID) for API calls will be problematic.
@@ -181,7 +177,7 @@
         // Optionally, allow adding to local list (campanaLocalId) and sync later. Store logic needs to support this.
         // For now, we proceed, assuming store handles it or user adds to synced campaign.
     }
-    if (!hasPermission(PERMISSIONS.MANAGE_PRODUCTOS_CAMPANA)) { toastStore.addToast('Sin permiso.'); return; }
+    if (!hasPermission(PERMISSIONS.EDIT_CAMPANA)) { toastStore.addToast('Sin permiso.'); return; } // Replaced MANAGE_PRODUCTOS_CAMPANA
 
     editingProductDiscount = null;
     initialProductFormData = { productoId: '', tipoDescuento: 'Porcentaje', valorDescuento: 0, fechaInicioDescuento: new Date().toISOString().split('T')[0] };
@@ -190,6 +186,7 @@
   }
 
   function handleEditProductDiscount(event: CustomEvent<CampanaProductoDescuentoDbo>) {
+    if (!svelteGet(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     editingProductDiscount = event.detail;
     initialProductFormData = {
       ...editingProductDiscount,
@@ -200,6 +197,7 @@
   }
 
   async function handleSaveProductDiscount(event: CustomEvent<Record<string, any>>) {
+    if (!svelteGet(isOnline)) { toastStore.addToast('Esta acción no está permitida en modo offline.', 'warning'); return; }
     const formData = event.detail;
     if (!selectedCampana || (selectedCampana.id === undefined && selectedCampana.localId === undefined) ) {
         toastStore.addToast('Error: No hay campaña seleccionada o la campaña no tiene ID.', 'error');
@@ -246,7 +244,7 @@
   <!-- Header -->
   <header class="view-header">
     <h1>Campañas de Descuento</h1>
-    {#if hasPermission(PERMISSIONS.CREATE_CAMPANA)}
+    {#if hasPermission(PERMISSIONS.CREATE_CAMPANA) && $isOnline}
       <button type="button" class="btn btn-primary" on:click={handleCreateNewCampaign}>Crear Nueva Campaña</button>
     {/if}
   </header>
@@ -287,7 +285,7 @@
         {#if isEditingHeader && selectedCampana }
           <section class="product-discounts-section">
             <h3>Productos y Descuentos en esta Campaña</h3>
-            {#if hasPermission(PERMISSIONS.MANAGE_PRODUCTOS_CAMPANA)}
+            {#if hasPermission(PERMISSIONS.EDIT_CAMPANA) && $isOnline}
               <button class="btn btn-secondary" on:click={handleOpenAddProductForm}>Agregar Producto/Descuento</button>
             {/if}
             <AdvancedTable

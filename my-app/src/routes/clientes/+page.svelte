@@ -1,6 +1,7 @@
 <!-- my-app/src/routes/clientes/+page.svelte -->
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { get } from 'svelte/store'; // Added get
   import { clienteStore } from '$lib/stores/clienteStore';
   import type {ClienteDbo} from '$lib/types/cliente';
   import AdvancedTable from '$lib/components/table/AdvancedTable.svelte';
@@ -8,19 +9,10 @@
   import {
     currentUserPermissions,
     hasPermission,
-    // Assuming these permissions will be added to authStore.ts
-    // For now, define them locally or adjust if they already exist with different names
+    PERMISSIONS, // Added PERMISSIONS import
   } from '$lib/stores/authStore';
   import { isOnline } from '$lib/stores/connectivityStore';
   import { toastStore } from '$lib/stores/toastStore';
-
-  // Placeholder permissions - replace with actual permissions from authStore if they exist
-  const PERMISSIONS = {
-    CREATE_CLIENTE: 'Permissions.Clientes.Create',
-    EDIT_CLIENTE: 'Permissions.Clientes.Edit',
-    DELETE_CLIENTE: 'Permissions.Clientes.Delete',
-    VIEW_CLIENTE: 'Permissions.Clientes.View',
-  };
 
   let clientes: ClienteDbo[] = [];
   let isLoading = true;
@@ -159,6 +151,7 @@
 
 
   function handleAdd() {
+    if (!get(isOnline)) { toastStore.addToast('Crear no está permitido en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.CREATE_CLIENTE)) {
       toastStore.addToast('No tienes permiso para crear clientes.', 'warning');
       return;
@@ -177,6 +170,7 @@
   }
 
   function handleEdit(event: CustomEvent<ClienteDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Editar no está permitido en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.EDIT_CLIENTE)) {
       toastStore.addToast('No tienes permiso para editar clientes.', 'warning');
       return;
@@ -189,6 +183,7 @@
   }
 
   async function handleDelete(event: CustomEvent<ClienteDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Eliminar no está permitido en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.DELETE_CLIENTE)) {
       toastStore.addToast('No tienes permiso para eliminar clientes.', 'warning');
       return;
@@ -206,6 +201,7 @@
   }
 
   async function handleSaveForm(event: CustomEvent<Record<string, any>>) {
+    if (!get(isOnline)) { toastStore.addToast('Guardar no está permitido en modo offline.', 'warning'); return; }
     const formData = event.detail;
     try {
       // Ensure required fields are present from formData
@@ -282,7 +278,7 @@
 
   <header class="view-header">
     <h1>Clientes</h1>
-    {#if hasPermission(PERMISSIONS.CREATE_CLIENTE)}
+    {#if hasPermission(PERMISSIONS.CREATE_CLIENTE) && $isOnline}
       <button type="button" class="btn btn-primary" on:click={handleAdd}>
         Crear Nuevo Cliente
       </button>

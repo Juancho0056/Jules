@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { get } from 'svelte/store'; // Added get
   import { unitOfMeasureStore } from "$lib/stores/unitOfMeasureStore";
   import AdvancedTable from "$lib/components/table/AdvancedTable.svelte";
   import FormBase from "$lib/components/forms/FormBase.svelte";
@@ -9,6 +10,7 @@
     PERMISSIONS,
   } from "$lib/stores/authStore";
   import { isOnline } from "$lib/stores/connectivityStore";
+  import { toastStore } from '$lib/stores/toastStore'; // Added toastStore
   import type { UnitOfMeasureDbo } from "$lib/services/dbService";
 
   // --- State from Store ---
@@ -116,8 +118,9 @@
 
   // --- Actions ---
   function handleAdd() {
+    if (!get(isOnline)) { toastStore.addToast('Crear no está permitido en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.CREATE_UNIDAD)) {
-      alert("No tienes permiso para crear unidades.");
+      toastStore.addToast("No tienes permiso para crear unidades.", 'warning');
       return;
     }
     editingUnidad = null;
@@ -127,8 +130,9 @@
   }
 
   function handleEdit(event: CustomEvent<UnitOfMeasureDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Editar no está permitido en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.EDIT_UNIDAD)) {
-      alert("No tienes permiso para editar.");
+      toastStore.addToast("No tienes permiso para editar.", 'warning');
       return;
     }
     editingUnidad = event.detail;
@@ -139,8 +143,9 @@
   }
 
   async function handleDelete(event: CustomEvent<UnitOfMeasureDbo>) {
+    if (!get(isOnline)) { toastStore.addToast('Eliminar no está permitido en modo offline.', 'warning'); return; }
     if (!hasPermission(PERMISSIONS.DELETE_UNIDAD)) {
-      alert("No tienes permiso para eliminar.");
+      toastStore.addToast("No tienes permiso para eliminar.", 'warning');
       return;
     }
     const unidadToDelete = event.detail;
@@ -150,13 +155,15 @@
           unidadToDelete.localId,
           unidadToDelete.codigo
         );
+        toastStore.addToast('Unidad eliminada localmente.', 'success');
       } else {
-        alert("No se puede eliminar la unidad, falta el identificador.");
+        toastStore.addToast("No se puede eliminar la unidad, falta el identificador.", 'error');
       }
     }
   }
 
   async function handleSaveForm(event: CustomEvent<Record<string, any>>) {
+    if (!get(isOnline)) { toastStore.addToast('Guardar no está permitido en modo offline.', 'warning'); return; }
     const formData = event.detail;
     try {
       if (editingUnidad && editingUnidad.localId !== undefined) {
@@ -170,6 +177,7 @@
           },
           editingUnidad.codigo
         );
+        toastStore.addToast('Unidad actualizada localmente.', 'success');
       } else {
         await unitOfMeasureStore.add({
           nombre: formData.nombre,
@@ -180,11 +188,12 @@
           orden: Number(formData.orden),
           estado: !!formData.estado,
         });
+        toastStore.addToast('Unidad agregada localmente.', 'success');
       }
       showForm = false;
       editingUnidad = null;
     } catch (error) {
-      alert("Error guardando la unidad: " + (error || error));
+      toastStore.addToast("Error guardando la unidad: " + (error instanceof Error ? error.message : String(error)), 'error');
     }
   }
 
@@ -204,7 +213,7 @@
 
   <header class="view-header">
     <h1>Unidades de Medida</h1>
-    {#if hasPermission(PERMISSIONS.CREATE_UNIDAD)}
+    {#if hasPermission(PERMISSIONS.CREATE_UNIDAD) && $isOnline}
       <button type="button" class="btn btn-primary" on:click={handleAdd}>
         Crear Nueva Unidad
       </button>

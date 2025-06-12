@@ -133,7 +133,7 @@ function createClienteStore() {
     const count = await db.clientes
       .where('ultimaConsulta')
       .below(cutoffDate)
-      .and(cliente => cliente.disponibleOffline === true)
+      .and(cliente => cliente.disponibleOffline === false) // Changed condition
       .delete();
     if (count > 0) {
         toastStore.addToast(`${count} clientes antiguos eliminados de la base local.`, 'info');
